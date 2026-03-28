@@ -31,22 +31,42 @@ Whether you need to batch convert `.m4a` to 24-bit `.flac` or apply precise EBU 
 
 ## 🚀 Installation
 
+*Note: `fptunes` requires `ffmpeg` to be installed and available on your system's PATH.*
+
 ### Option 1: Pre-compiled Binaries
 Download the latest standalone executable for your operating system from the [Releases](../../releases) page. Put it in your system's `PATH` and you're good to go.
 
 ### Option 2: Build from Source
-Building `fptunes` is incredibly straightforward if you have [Free Pascal](https://www.freepascal.org/) or [Lazarus](https://www.lazarus-ide.org/) installed.
+Building `fptunes` is incredibly straightforward. The project uses a custom compiler configuration (`fptunes.cfg`) to ensure a pristine source tree, outputting all build artifacts safely to `bin/` and `obj/` folders.
+
+Ensure you have the [Free Pascal Compiler](https://www.freepascal.org/) installed, then clone the repository:
 
 ```bash
-# Clone the repository
 git clone https://github.com/urban233/fptunes.git
 cd fptunes
-
-# Compile the main project (automatically links all units)
-fpc src/fptunes.pas -O3 -XX -s
 ````
 
-*(Note: Requires `ffmpeg` installed on your system to handle the audio DSP work.)*
+**For Windows:**
+Use the included batch script to compile the project.
+
+```powershell
+.\build.bat
+```
+
+*The compiled executable will be located at `bin\fptunes.exe`.*
+
+**For macOS / Linux:**
+Use the included Makefile to compile and optionally install the project system-wide.
+
+```bash
+# Build the executable (outputs to bin/fptunes)
+make
+
+# Install globally to /usr/local/bin (requires sudo)
+sudo make install
+```
+
+*(To clean your build environment on any OS, run `.\build.bat clean` or `make clean`).*
 
 -----
 
@@ -82,11 +102,12 @@ fptunes --help
 
 ## 🛠️ Architecture
 
-`fptunes` is built using modern Object Pascal conventions:
+`fptunes` is built using modern Object Pascal conventions and a professional build pipeline:
 
-  * **`TCustomApplication`**: Handles CLI routing, parameter parsing, and help flag generation.
+  * **`TCustomApplication`**: Handles CLI routing, parameter parsing, and help flag generation natively.
   * **`TProcess`**: Safely wraps and executes asynchronous `ffmpeg` calls with custom pipe-reading to prevent OS deadlocks.
   * **`fpjson`**: Natively parses complex JSON analysis data generated during two-pass normalization.
+  * **`fptunes.cfg`**: A custom compiler configuration file that enforces strict `-O3` and `-XX` (Smart Linking) optimizations, stripping debug symbols (`-Xs`) to generate the smallest, fastest binary possible.
 
 -----
 
