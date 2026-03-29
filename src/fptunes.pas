@@ -4,10 +4,10 @@ program fptunes;
 
 uses
   Classes, SysUtils, CustApp, uAudioNormalizer,
-  fpjson, jsonparser, opensslsockets, uMusicProviderAPI, uMusicProviderUtils, uConfig, uLibraryManager;
+  fpjson, jsonparser, opensslsockets, uMusicProviderAPI, uMusicProviderUtils, uConfig, uLibraryManager, uFileSync;
 
 const
-  APP_VERSION = '0.5.1';
+  APP_VERSION = '0.6.0';
 
 type
   { TFPTunesApp }
@@ -21,6 +21,7 @@ type
     procedure HandleMusicProviderCommand;
     procedure HandleConfigCommand;
     procedure HandleManageCommand;
+    procedure HandleFileSyncCommand;
   public
     constructor Create(TheOwner: TComponent); override;
     destructor Destroy; override;
@@ -45,6 +46,50 @@ begin
   if Assigned(AppConfig) then
     FreeAndNil(AppConfig);
   inherited Destroy;
+end;
+
+// ============================================================================
+// COMMAND: filesync (One-Way Recursive Sync)
+// ============================================================================
+procedure TFPTunesApp.HandleFileSyncCommand;
+var
+  Manager: TFileSyncManager;
+  UserResponse, Src, Dest: string;
+begin
+  if HasOption('v', 'version') then
+  begin
+    WriteVersion;
+    Exit;
+  end;
+
+  Src := AppConfig.SyncSource;
+  Dest := AppConfig.SyncDest;
+
+  if HasOption('src') then
+    Src := GetOptionValue('src');
+  if HasOption('dest') then
+    Dest := GetOptionValue('dest');
+
+  if (Src = '') or (Dest = '') then
+  begin
+    WriteLn('Error: Source and Destination paths must be specified in INI or via flags.');
+    Exit;
+  end;
+
+  Manager := TFileSyncManager.Create(Src, Dest);
+  try
+    Manager.BuildPipeline;
+    Manager.PrintDryRun;
+
+    Write('Proceed with synchronization? (y/N): ');
+    ReadLn(UserResponse);
+    if LowerCase(Trim(UserResponse)) = 'y' then
+      Manager.ExecutePipeline
+    else
+      WriteLn('Operation cancelled by user.');
+  finally
+    Manager.Free;
+  end;
 end;
 
 // ============================================================================
@@ -300,9 +345,14 @@ begin
   Writeln('Usage: ', ExeName, ' [command] [options]');
   Writeln('');
   Writeln('Commands:');
+  Writeln('  filesync     One-way recursive sync between two folders');
   Writeln('  manage       Process and route files into your library structure');
   Writeln('  norm         Normalize audio loudness to EBU R128 (-14 LUFS)');
   Writeln('  config       Manage application configuration');
+  Writeln('');
+  Writeln('Options for "filesync":');
+  Writeln('  --src        <path>   Source directory (overrides INI)');
+  Writeln('  --dest       <path>   Destination directory (overrides INI)');
   Writeln('');
   Writeln('Options for "manage":');
   Writeln('  --convert             Convert .m4a files to FLAC (uses INI settings)');
@@ -340,7 +390,7 @@ var
   Command: String;
 begin
   // Quick check parameters
-  ErrorMsg := CheckOptions('hiv', 'help input: two-pass auth regenerate convert move backup: true-peak lufs: dest: version');
+  ErrorMsg := CheckOptions('hiv', 'help input: two-pass auth regenerate convert move backup: true-peak lufs: dest: version src:');
   if ErrorMsg <> '' then begin
     ShowException(Exception.Create(ErrorMsg));
     Terminate;
@@ -369,6 +419,8 @@ begin
     HandleNormCommand
   else if Command = 'manage' then
     HandleManageCommand
+  else if Command = 'filesync' then
+    HandleFileSyncCommand
   else if Command = 'xsync' then
     HandleMusicProviderCommand
   else if Command = 'config' then
