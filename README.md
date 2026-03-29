@@ -12,6 +12,13 @@
   <img src="https://img.shields.io/badge/License-BSD--3--Clause-blue.svg?style=flat-square" alt="License">
 </p>
 
+<p align="center">
+  <a href="https://GitHub.com/urban233/fptunes/graphs/commit-activity"><img src="https://img.shields.io/badge/Maintained%3F-yes-blue.svg?style=flat-square" alt="Maintenance"></a>
+  <a href="https://github.com/urban233/fptunes/releases/"><img src="https://img.shields.io/github/release/urban233/fptunes.svg?style=flat-square&color=blue" alt="Latest Release"></a>
+  <a href="https://github.com/urban233/fptunes/issues"><img src="https://img.shields.io/github/issues/urban233/fptunes?style=flat-square" alt="Issues"></a>
+  <a href="https://gitHub.com/urban233/fptunes/graphs/contributors/"><img src="https://img.shields.io/github/contributors/urban233/fptunes.svg?style=flat-square&color=blue" alt="Contributors"></a>
+</p>
+
 ---
 
 ## 🎵 Overview
@@ -36,7 +43,10 @@ Whether you need to batch convert `.m4a` to 24-bit `.flac` or apply precise EBU 
 ## 🚀 Installation
 
 ### Option 1: Pre-compiled Binaries
-**Coming Soon!** Pre-built standalone binaries for Windows, macOS, and Linux are currently in development and will be available in the [Releases](../../releases) section shortly.
+Standalone binaries for Windows, macOS, and Linux are now available in the [Releases](../../releases) section.
+
+> [!NOTE]
+> While binaries are provided for all three major platforms, **only the Windows binaries have been fully tested.** macOS and Linux builds are provided as-is; please report any issues you encounter.
 
 ### Option 2: Build from Source
 Building `fptunes` is incredibly straightforward. The project uses a custom compiler configuration (`fptunes.cfg`) to ensure a pristine source tree, outputting all build artifacts safely to `bin/` and `obj/` folders.
