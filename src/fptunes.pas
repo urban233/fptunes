@@ -6,6 +6,9 @@ uses
   Classes, SysUtils, CustApp, uAudioNormalizer,
   fpjson, jsonparser, opensslsockets, uMusicProviderAPI, uMusicProviderUtils, uConfig, uLibraryManager;
 
+const
+  APP_VERSION = '0.5.1';
+
 type
   { TFPTunesApp }
   TFPTunesApp = class(TCustomApplication)
@@ -13,6 +16,7 @@ type
     procedure DoRun; override;
   private
     procedure WriteHelp;
+    procedure WriteVersion;
     procedure HandleNormCommand;
     procedure HandleMusicProviderCommand;
     procedure HandleConfigCommand;
@@ -23,6 +27,11 @@ type
   end;
 
 { TFPTunesApp }
+
+procedure TFPTunesApp.WriteVersion;
+begin
+  Writeln('fptunes version ', APP_VERSION);
+end;
 
 constructor TFPTunesApp.Create(TheOwner: TComponent);
 begin
@@ -48,6 +57,12 @@ var
   UserResponse: string;
   FormatSettings: TFormatSettings;
 begin
+  if HasOption('v', 'version') then
+  begin
+    WriteVersion;
+    Exit;
+  end;
+
   DoConvert := HasOption('convert');
   DoMove := HasOption('move');
   UseTruePeak := HasOption('true-peak');
@@ -92,6 +107,12 @@ end;
 // ============================================================================
 procedure TFPTunesApp.HandleConfigCommand;
 begin
+  if HasOption('v', 'version') then
+  begin
+    WriteVersion;
+    Exit;
+  end;
+
   if HasOption('regenerate') then
   begin
     AppConfig.GenerateDefaults(ExtractFilePath(ParamStr(0)) + 'fptunes.ini');
@@ -114,6 +135,12 @@ var
   i: Integer;
   Metadata: TJSONObject;
 begin
+  if HasOption('v', 'version') then
+  begin
+    WriteVersion;
+    Exit;
+  end;
+
   Randomize;
   MusicProvider := TMusicProviderAPI.Create;
   
@@ -173,6 +200,12 @@ procedure TFPTunesApp.HandleNormCommand;
 var
   InputFile: string;
 begin
+  if HasOption('v', 'version') then
+  begin
+    WriteVersion;
+    Exit;
+  end;
+
   // Check if the user provided an input file using -i or --input
   if HasOption('i', 'input') then
     InputFile := GetOptionValue('i', 'input')
@@ -208,7 +241,7 @@ end;
 // ============================================================================
 procedure TFPTunesApp.WriteHelp;
 begin
-  Writeln('fptunes - The Free Pascal Audio Suite');
+  Writeln('fptunes version ', APP_VERSION, ' - The Free Pascal Audio Suite');
   Writeln('Usage: ', ExeName, ' [command] [options]');
   Writeln('');
   Writeln('Commands:');
@@ -233,6 +266,7 @@ begin
   Writeln('  --regenerate          Create or overwrite fptunes.ini with default values');
   Writeln('');
   Writeln('Global Options:');
+  Writeln('  -v, --version         Show version information');
   Writeln('  -h, --help            Show this help menu');
   Writeln('');
   Writeln('Example:');
@@ -248,9 +282,16 @@ var
   Command: String;
 begin
   // Quick check parameters
-  ErrorMsg := CheckOptions('hi:', 'help input: two-pass auth regenerate convert move backup: true-peak lufs:');
+  ErrorMsg := CheckOptions('hiv', 'help input: two-pass auth regenerate convert move backup: true-peak lufs: version');
   if ErrorMsg <> '' then begin
     ShowException(Exception.Create(ErrorMsg));
+    Terminate;
+    Exit;
+  end;
+
+  // Parse Version
+  if HasOption('v', 'version') then begin
+    WriteVersion;
     Terminate;
     Exit;
   end;
