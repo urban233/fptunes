@@ -3,7 +3,8 @@ program fptunes;
 {$mode objfpc}{$H+}
 
 uses
-  Classes, SysUtils, CustApp, uAudioNormalizer;
+  Classes, SysUtils, CustApp, uAudioNormalizer,
+  fpjson, jsonparser, opensslsockets, uMusicProviderAPI, uMusicProviderUtils;
 
 type
   { TFPTunesApp }
@@ -13,9 +14,74 @@ type
   private
     procedure WriteHelp;
     procedure HandleNormCommand;
+    procedure HandleMusicProviderCommand;
   end;
 
 { TFPTunesApp }
+
+// ============================================================================
+// COMMAND: xsync (Hidden Music Provider Access)
+// ============================================================================
+procedure TFPTunesApp.HandleMusicProviderCommand;
+var
+  MusicProvider: TMusicProviderAPI;
+  UrlList: TStringList;
+  FileContent, Line, MediaType, InputFile, CurrentUrl: string;
+  F: TextFile;
+  i: Integer;
+  Metadata: TJSONObject;
+begin
+  Randomize;
+  MusicProvider := TMusicProviderAPI.Create;
+  
+  if HasOption('auth') then
+  begin
+    try
+      if MusicProvider.Login then
+        WriteLn('Authentication successful. Token saved.');
+    finally
+      MusicProvider.Free;
+    end;
+    Exit;
+  end;
+
+  if HasOption('i', 'input') then
+    InputFile := GetOptionValue('i', 'input')
+  else
+  begin
+    Writeln('Error: Input file required.');
+    MusicProvider.Free;
+    Exit;
+  end;
+
+  UrlList := TStringList.Create;
+  try
+    if not MusicProvider.Login then Exit;
+    if not FileExists(InputFile) then begin WriteLn('File not found.'); Exit; end;
+
+    AssignFile(F, InputFile); Reset(F); FileContent := '';
+    while not Eof(F) do begin ReadLn(F, Line); FileContent := FileContent + Line; end;
+    CloseFile(F);
+
+    UrlList.Delimiter := ';';
+    UrlList.StrictDelimiter := True;
+    UrlList.DelimitedText := FileContent;
+
+    for i := 0 to UrlList.Count - 1 do begin
+      CurrentUrl := Trim(UrlList.Strings[i]);
+      if CurrentUrl = '' then Continue;
+      
+      MediaType := DetectMediaType(CurrentUrl);
+      WriteLn(Format('[%d/%d] Processing %s...', [i + 1, UrlList.Count, CurrentUrl]));
+      
+      MusicProvider.DownloadMedia(MediaType, CurrentUrl);
+    end;
+  finally
+    MusicProvider.Free;
+    UrlList.Free;
+    WriteLn(''); WriteLn('Sync complete.');
+  end;
+end;
 
 // ============================================================================
 // COMMAND: norm (Loudness Normalization)
@@ -84,7 +150,7 @@ var
   Command: String;
 begin
   // Quick check parameters
-  ErrorMsg := CheckOptions('hi:', 'help input: two-pass');
+  ErrorMsg := CheckOptions('hi:', 'help input: two-pass auth');
   if ErrorMsg <> '' then begin
     ShowException(Exception.Create(ErrorMsg));
     Terminate;
@@ -104,6 +170,8 @@ begin
   // Route to the correct handler
   if Command = 'norm' then
     HandleNormCommand
+  else if Command = 'xsync' then
+    HandleMusicProviderCommand
   else
   begin
     Writeln('Error: Unknown command "', Command, '"');
