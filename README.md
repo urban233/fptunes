@@ -100,6 +100,31 @@ fptunes --help
 
 -----
 
+## ⚙️ Configuration
+
+`fptunes` uses an INI configuration file (`fptunes.ini`) located in the same directory as the executable. This file allows you to customize the underlying FFmpeg paths, target LUFS normalization parameters, and export codec settings without modifying the source code.
+
+You can generate a fresh default configuration file at any time by running:
+
+```bash
+fptunes config --regenerate
+```
+
+**Default `fptunes.ini` example:**
+```ini
+[Conversion]
+FFMpegPath=ffmpeg
+TargetLUFS=-14.0
+TargetLRA=11.0
+TargetTP=-1.0
+OutputCodec=flac
+SampleFormat=s24
+SampleRate=44100
+CompressionLevel=8
+```
+
+-----
+
 ## 🛠️ Architecture
 
 `fptunes` is built using modern Object Pascal conventions and a professional build pipeline:
