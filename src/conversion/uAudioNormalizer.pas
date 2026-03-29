@@ -9,8 +9,58 @@ uses
 
 // This is the only function exposed to the rest of the application
 function ConvertM4AToFlacTwoPass(const InputPath: string): Boolean;
+function ConvertM4AToFlacTruePeak(const InputPath: string): Boolean;
 
 implementation
+
+// ============================================================================
+// HELPER: True Peak Normalization (One-Pass)
+// ============================================================================
+function ConvertM4AToFlacTruePeak(const InputPath: string): Boolean;
+var
+  Proc: TProcess;
+  OutputPath: string;
+begin
+  Result := False;
+  OutputPath := ChangeFileExt(InputPath, '.' + AppConfig.OutputCodec);
+  Writeln('Starting True-Peak Normalization for: ', ExtractFileName(InputPath));
+  Writeln(Format('  -> Applying true-peak limiter and exporting to %s...', [AppConfig.OutputCodec]));
+
+  Proc := TProcess.Create(nil);
+  try
+    Proc.Executable := AppConfig.FFMpegPath;
+    Proc.Parameters.Add('-hide_banner');
+    Proc.Parameters.Add('-y'); 
+    Proc.Parameters.Add('-i');
+    Proc.Parameters.Add(InputPath);
+    Proc.Parameters.Add('-af');
+    // aresample=resampler=soxr (high quality resampling to prevent inter-sample peaks)
+    // alimiter=limit=0.9885 (-0.1 dB True Peak limit)
+    Proc.Parameters.Add('aresample=resampler=soxr,alimiter=limit=0.9885');
+    Proc.Parameters.Add('-c:a');
+    Proc.Parameters.Add(AppConfig.OutputCodec);
+    Proc.Parameters.Add('-sample_fmt');
+    Proc.Parameters.Add(AppConfig.SampleFormat); 
+    Proc.Parameters.Add('-ar');
+    Proc.Parameters.Add(IntToStr(AppConfig.SampleRate));
+    Proc.Parameters.Add('-compression_level');
+    Proc.Parameters.Add(IntToStr(AppConfig.CompressionLevel));
+    Proc.Parameters.Add(OutputPath);
+
+    Proc.Options := [poWaitOnExit];
+    Proc.Execute;
+
+    if Proc.ExitStatus = 0 then
+    begin
+      Writeln('  -> Success! File saved: ', OutputPath);
+      Result := True;
+    end
+    else
+      Writeln('  -> Error: ffmpeg encountered an error during True-Peak conversion.');
+  finally
+    Proc.Free;
+  end;
+end;
 
 // ============================================================================
 // HELPER 1: Run Pass 1 to analyze the audio and capture the JSON output

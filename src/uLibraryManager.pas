@@ -8,7 +8,7 @@ uses
   Classes, SysUtils, Process, strutils, uConfig, uAudioNormalizer;
 
 type
-  TFileAction = (faConvert, faBackup, faMoveHiRes, faMoveCDQuality, faMoveWav, faMoveMp3);
+  TFileAction = (faConvertTwoPass, faConvertTruePeak, faBackup, faMoveHiRes, faMoveCDQuality, faMoveWav, faMoveMp3);
 
   TFilePipeline = record
     OriginalFile: string;
@@ -21,13 +21,14 @@ type
   private
     FPipelines: array of TFilePipeline;
     FDoConvert: Boolean;
+    FUseTruePeak: Boolean;
     FDoMove: Boolean;
     function GetBitDepth(const FilePath: string): Integer;
     procedure AddAction(var Pipeline: TFilePipeline; Action: TFileAction);
     function ActionToStr(Action: TFileAction): string;
     procedure ScanDirectory(const DirPath, RelativePath: string);
   public
-    constructor Create(DoConvert, DoMove: Boolean);
+    constructor Create(DoConvert, UseTruePeak, DoMove: Boolean);
     procedure BuildPipeline;
     procedure PrintDryRun;
     procedure ExecutePipeline;
@@ -35,9 +36,10 @@ type
 
 implementation
 
-constructor TLibraryManager.Create(DoConvert, DoMove: Boolean);
+constructor TLibraryManager.Create(DoConvert, UseTruePeak, DoMove: Boolean);
 begin
   FDoConvert := DoConvert;
+  FUseTruePeak := UseTruePeak;
   FDoMove := DoMove;
   SetLength(FPipelines, 0);
 end;
@@ -51,7 +53,8 @@ end;
 function TLibraryManager.ActionToStr(Action: TFileAction): string;
 begin
   case Action of
-    faConvert: Result := 'Convert to ' + UpperCase(AppConfig.OutputCodec);
+    faConvertTwoPass: Result := 'Convert to ' + UpperCase(AppConfig.OutputCodec) + ' (Two-Pass R128)';
+    faConvertTruePeak: Result := 'Convert to ' + UpperCase(AppConfig.OutputCodec) + ' (True-Peak Limiter)';
     faBackup: Result := 'Backup Original';
     faMoveHiRes: Result := 'Move to Hi-Res';
     faMoveCDQuality: Result := 'Move to CD Quality';
@@ -149,7 +152,11 @@ begin
 
           if (Ext = '.m4a') and FDoConvert then
           begin
-            AddAction(Pipeline, faConvert);
+            if FUseTruePeak then
+              AddAction(Pipeline, faConvertTruePeak)
+            else
+              AddAction(Pipeline, faConvertTwoPass);
+              
             AddAction(Pipeline, faBackup);
             Pipeline.BackupDest := IncludeTrailingPathDelimiter(AppConfig.BackupM4APath) + RelativePath + FileName;
             
@@ -279,10 +286,21 @@ begin
     for j := 0 to High(Pl.Actions) do
     begin
       case Pl.Actions[j] of
-        faConvert:
+        faConvertTwoPass:
         begin
-          WriteLn('  -> Converting...');
+          WriteLn('  -> Converting (Two-Pass R128)...');
           if ConvertM4AToFlacTwoPass(CurrentFile) then
+            TempFile := ChangeFileExt(CurrentFile, '.' + AppConfig.OutputCodec)
+          else
+          begin
+            WriteLn('  -> Conversion failed. Skipping rest of pipeline.');
+            Break; // Stop pipeline for this file
+          end;
+        end;
+        faConvertTruePeak:
+        begin
+          WriteLn('  -> Converting (True-Peak Limiter)...');
+          if ConvertM4AToFlacTruePeak(CurrentFile) then
             TempFile := ChangeFileExt(CurrentFile, '.' + AppConfig.OutputCodec)
           else
           begin

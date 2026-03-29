@@ -44,11 +44,13 @@ end;
 procedure TFPTunesApp.HandleManageCommand;
 var
   Manager: TLibraryManager;
-  DoConvert, DoMove: Boolean;
+  DoConvert, DoMove, UseTruePeak: Boolean;
   UserResponse: string;
+  FormatSettings: TFormatSettings;
 begin
   DoConvert := HasOption('convert');
   DoMove := HasOption('move');
+  UseTruePeak := HasOption('true-peak');
 
   if not DoConvert and not DoMove then
   begin
@@ -61,8 +63,15 @@ begin
     AppConfig.InputPath := GetOptionValue('i', 'input');
   if HasOption('backup') then
     AppConfig.BackupM4APath := GetOptionValue('backup');
+    
+  if HasOption('lufs') then
+  begin
+    FormatSettings := DefaultFormatSettings;
+    FormatSettings.DecimalSeparator := '.';
+    AppConfig.TargetLUFS := StrToFloatDef(GetOptionValue('lufs'), -14.0, FormatSettings);
+  end;
 
-  Manager := TLibraryManager.Create(DoConvert, DoMove);
+  Manager := TLibraryManager.Create(DoConvert, UseTruePeak, DoMove);
   try
     Manager.BuildPipeline;
     Manager.PrintDryRun;
@@ -214,6 +223,8 @@ begin
   Writeln('');
   Writeln('Options for "manage":');
   Writeln('  --convert             Convert .m4a files to FLAC (uses INI settings)');
+  Writeln('  --true-peak           Bypass R128; use pure limit to preserve original loudness');
+  Writeln('  --lufs       <val>    Override the TargetLUFS defined in INI (e.g., -9.0)');
   Writeln('  --move                Route files to quality-specific library folders');
   Writeln('  -i, --input  <path>   Override the InputPath defined in INI');
   Writeln('  --backup     <path>   Override the BackupM4APath defined in INI');
@@ -225,7 +236,7 @@ begin
   Writeln('  -h, --help            Show this help menu');
   Writeln('');
   Writeln('Example:');
-  Writeln('  fptunes manage --convert --move');
+  Writeln('  fptunes manage --convert --true-peak --move');
 end;
 
 // ============================================================================
@@ -237,7 +248,7 @@ var
   Command: String;
 begin
   // Quick check parameters
-  ErrorMsg := CheckOptions('hi:', 'help input: two-pass auth regenerate convert move backup:');
+  ErrorMsg := CheckOptions('hi:', 'help input: two-pass auth regenerate convert move backup: true-peak lufs:');
   if ErrorMsg <> '' then begin
     ShowException(Exception.Create(ErrorMsg));
     Terminate;
