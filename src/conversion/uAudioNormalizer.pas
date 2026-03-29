@@ -8,21 +8,19 @@ uses
   Classes, SysUtils, Process, fpjson, jsonparser, strutils, uConfig;
 
 // This is the only function exposed to the rest of the application
-function ConvertM4AToFlacTwoPass(const InputPath: string): Boolean;
-function ConvertM4AToFlacTruePeak(const InputPath: string): Boolean;
+function ConvertM4AToFlacTwoPass(const InputPath, OutputPath: string): Boolean;
+function ConvertM4AToFlacTruePeak(const InputPath, OutputPath: string): Boolean;
 
 implementation
 
 // ============================================================================
 // HELPER: True Peak Normalization (One-Pass)
 // ============================================================================
-function ConvertM4AToFlacTruePeak(const InputPath: string): Boolean;
+function ConvertM4AToFlacTruePeak(const InputPath, OutputPath: string): Boolean;
 var
   Proc: TProcess;
-  OutputPath: string;
 begin
   Result := False;
-  OutputPath := ChangeFileExt(InputPath, '.' + AppConfig.OutputCodec);
   Writeln('Starting True-Peak Normalization for: ', ExtractFileName(InputPath));
   Writeln(Format('  -> Applying true-peak limiter and exporting to %s...', [AppConfig.OutputCodec]));
 
@@ -205,12 +203,11 @@ end;
 // ============================================================================
 // MAIN WRAPPER: This strings the helpers together cleanly
 // ============================================================================
-function ConvertM4AToFlacTwoPass(const InputPath: string): Boolean;
+function ConvertM4AToFlacTwoPass(const InputPath, OutputPath: string): Boolean;
 var
-  JsonStr, FilterStr, OutputPath: string;
+  JsonStr, FilterStr: string;
 begin
   Result := False;
-  OutputPath := ChangeFileExt(InputPath, '.' + AppConfig.OutputCodec);
   Writeln('Starting Two-Pass Normalization for: ', ExtractFileName(InputPath));
 
   Writeln('  -> Pass 1: Analyzing audio dynamics...');

@@ -198,7 +198,9 @@ end;
 // ============================================================================
 procedure TFPTunesApp.HandleNormCommand;
 var
-  InputFile: string;
+  InputFile, OutputFile, DestFile: string;
+  UseTruePeak, UseTwoPass, Success: Boolean;
+  FormatSettings: TFormatSettings;
 begin
   if HasOption('v', 'version') then
   begin
@@ -223,16 +225,69 @@ begin
     Exit;
   end;
 
-  // Check if they want the two-pass algorithm 
-  if HasOption('two-pass') then
+  UseTruePeak := HasOption('true-peak');
+  UseTwoPass := HasOption('two-pass');
+  
+  if HasOption('lufs') then
   begin
-    ConvertM4AToFlacTwoPass(InputFile);
+    FormatSettings := DefaultFormatSettings;
+    FormatSettings.DecimalSeparator := '.';
+    AppConfig.TargetLUFS := StrToFloatDef(GetOptionValue('lufs'), -14.0, FormatSettings);
+  end;
+
+  if not UseTruePeak and not UseTwoPass then
+  begin
+    Writeln('Error: You must specify --two-pass or --true-peak.');
+    Exit;
+  end;
+
+  if HasOption('dest') then
+  begin
+    DestFile := GetOptionValue('dest');
+    // If dest is a directory, append filename
+    if DirectoryExists(DestFile) or (DestFile[Length(DestFile)] = PathDelim) then
+    begin
+      ForceDirectories(DestFile);
+      DestFile := IncludeTrailingPathDelimiter(DestFile) + ChangeFileExt(ExtractFileName(InputFile), '.' + AppConfig.OutputCodec);
+    end;
+    OutputFile := DestFile;
   end
   else
   begin
-    // Placeholder for future single-pass logic
-    Writeln('Single-pass normalization is not yet implemented.');
-    Writeln('Please use the --two-pass flag.');
+    // In-place logic
+    OutputFile := ChangeFileExt(InputFile, '.' + AppConfig.OutputCodec);
+    // If same extension, use temp file to avoid ffmpeg reading/writing same file
+    if LowerCase(ExtractFileExt(InputFile)) = LowerCase(ExtractFileExt(OutputFile)) then
+      OutputFile := InputFile + '.tmp';
+  end;
+
+  Success := False;
+  if UseTwoPass then
+    Success := ConvertM4AToFlacTwoPass(InputFile, OutputFile)
+  else if UseTruePeak then
+    Success := ConvertM4AToFlacTruePeak(InputFile, OutputFile);
+
+  if Success then
+  begin
+    if not HasOption('dest') then
+    begin
+      // Handle in-place finalization
+      if LowerCase(ExtractFileExt(InputFile)) = LowerCase(ExtractFileExt(OutputFile)) then
+      begin
+        if not RenameFile(OutputFile, InputFile) then
+          Writeln('  -> Error: Failed to replace original file with normalized version.')
+        else
+          Writeln('  -> Done (In-Place).');
+      end
+      else
+      begin
+        // Format changed, remove original if requested (in-place default)
+        if FileExists(InputFile) then DeleteFile(InputFile);
+        Writeln('  -> Done (In-Place, format changed). New file: ', OutputFile);
+      end;
+    end
+    else
+      Writeln('  -> Done. File saved to: ', OutputFile);
   end;
 end;
 
@@ -241,18 +296,13 @@ end;
 // ============================================================================
 procedure TFPTunesApp.WriteHelp;
 begin
-  Writeln('fptunes version ', APP_VERSION, ' - The Free Pascal Audio Suite');
+  Writeln('fptunes version ', APP_VERSION, ' - The Free Pascal Audio Manager');
   Writeln('Usage: ', ExeName, ' [command] [options]');
   Writeln('');
   Writeln('Commands:');
-  Writeln('  norm         Normalize audio loudness to EBU R128 (-14 LUFS)');
   Writeln('  manage       Process and route files into your library structure');
+  Writeln('  norm         Normalize audio loudness to EBU R128 (-14 LUFS)');
   Writeln('  config       Manage application configuration');
-  Writeln('  convert      (Coming soon) Convert between audio formats');
-  Writeln('');
-  Writeln('Options for "norm":');
-  Writeln('  -i, --input  <path>   The audio file to process');
-  Writeln('  --two-pass            Use the studio-grade two-pass algorithm');
   Writeln('');
   Writeln('Options for "manage":');
   Writeln('  --convert             Convert .m4a files to FLAC (uses INI settings)');
@@ -261,6 +311,13 @@ begin
   Writeln('  --move                Route files to quality-specific library folders');
   Writeln('  -i, --input  <path>   Override the InputPath defined in INI');
   Writeln('  --backup     <path>   Override the BackupM4APath defined in INI');
+  Writeln('');
+  Writeln('Options for "norm":');
+  Writeln('  -i, --input  <path>   The audio file to process');
+  Writeln('  --two-pass            Use the studio-grade two-pass algorithm');
+  Writeln('  --true-peak           Use pure limit to preserve original loudness');
+  Writeln('  --lufs       <val>    Override the TargetLUFS defined in INI (e.g., -14.0)');
+  Writeln('  --dest       <path>   Save normalized file to this path (default: in-place)');
   Writeln('');
   Writeln('Options for "config":');
   Writeln('  --regenerate          Create or overwrite fptunes.ini with default values');
@@ -271,6 +328,7 @@ begin
   Writeln('');
   Writeln('Example:');
   Writeln('  fptunes manage --convert --true-peak --move');
+  Writeln('  fptunes norm -i input.m4a --two-pass --dest ./normalized/');
 end;
 
 // ============================================================================
@@ -282,7 +340,7 @@ var
   Command: String;
 begin
   // Quick check parameters
-  ErrorMsg := CheckOptions('hiv', 'help input: two-pass auth regenerate convert move backup: true-peak lufs: version');
+  ErrorMsg := CheckOptions('hiv', 'help input: two-pass auth regenerate convert move backup: true-peak lufs: dest: version');
   if ErrorMsg <> '' then begin
     ShowException(Exception.Create(ErrorMsg));
     Terminate;

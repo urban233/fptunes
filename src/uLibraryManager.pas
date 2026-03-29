@@ -289,8 +289,9 @@ begin
         faConvertTwoPass:
         begin
           WriteLn('  -> Converting (Two-Pass R128)...');
-          if ConvertM4AToFlacTwoPass(CurrentFile) then
-            TempFile := ChangeFileExt(CurrentFile, '.' + AppConfig.OutputCodec)
+          TempFile := ChangeFileExt(CurrentFile, '.' + AppConfig.OutputCodec);
+          if ConvertM4AToFlacTwoPass(CurrentFile, TempFile) then
+            // Success
           else
           begin
             WriteLn('  -> Conversion failed. Skipping rest of pipeline.');
@@ -300,8 +301,9 @@ begin
         faConvertTruePeak:
         begin
           WriteLn('  -> Converting (True-Peak Limiter)...');
-          if ConvertM4AToFlacTruePeak(CurrentFile) then
-            TempFile := ChangeFileExt(CurrentFile, '.' + AppConfig.OutputCodec)
+          TempFile := ChangeFileExt(CurrentFile, '.' + AppConfig.OutputCodec);
+          if ConvertM4AToFlacTruePeak(CurrentFile, TempFile) then
+            // Success
           else
           begin
             WriteLn('  -> Conversion failed. Skipping rest of pipeline.');

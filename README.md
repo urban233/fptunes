@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>A blazingly fast, cross-platform CLI audio suite written in Free Pascal.</strong>
+  <strong>A blazingly fast, cross-platform CLI audio manager written in Free Pascal.</strong>
 </p>
 
 <p align="center">
@@ -26,6 +26,7 @@ Whether you need to batch convert `.m4a` to 24-bit `.flac` or apply precise EBU 
 ## ✨ Features
 
 - **Studio-Grade Normalization:** True two-pass EBU R128 loudness normalization (target: -14 LUFS) that preserves dynamic range without pumping or clipping.
+- **True-Peak Limiting:** Option to bypass LUFS normalization and use a pure True-Peak limiter to preserve the original master's loudness.
 - **Smart Conversion:** Automatically detects source bit-depth to prevent file bloat (e.g., mapping 32-bit floats to 24-bit FLACs).
 - **Native & Portable:** A single, lightweight executable. No Python environments, no Node modules, no `.NET` runtimes required.
 - **Cross-Platform:** Write once, compile anywhere. Runs natively on Windows, macOS, and Linux.
@@ -45,7 +46,7 @@ Ensure you have the [Free Pascal Compiler](https://www.freepascal.org/) installe
 ```bash
 git clone https://github.com/urban233/fptunes.git
 cd fptunes
-````
+```
 
 **For Windows:**
 Use the included batch script to compile the project.
@@ -69,9 +70,7 @@ sudo make install
 
 *(To clean your build environment on any OS, run `.\build.bat clean` or `make clean`).*
 
------
-
------
+---
 
 ## 📖 Usage
 
@@ -89,7 +88,7 @@ fptunes manage --convert --true-peak --move
 
 **Options for `manage`:**
 - `--convert`: Convert `.m4a` files to FLAC using your INI settings.
-- `--true-peak`: **(Highly Recommended)** Bypasses LUFS normalization; uses a True-Peak limiter to preserve the original master's loudness while preventing digital clipping.
+- `--true-peak`: Bypasses LUFS normalization; uses a True-Peak limiter.
 - `--move`: Analyzes file quality (bit-depth) and routes files to specific folders (Hi-Res, CD-Quality, etc.).
 - `--lufs <val>`: Override the target loudness (default: -14.0).
 - `-i, --input <path>`: Temporarily override the input directory.
@@ -99,11 +98,24 @@ fptunes manage --convert --true-peak --move
 
 ### 🔊 Manual Loudness Normalization
 
-Apply two-pass EBU R128 normalization to a single audio file:
+Apply normalization to a single audio file. By default, the `norm` command performs the conversion **in-place**, replacing or removing the original file after successful processing.
 
+**Apply two-pass EBU R128 normalization:**
 ```bash
 fptunes norm -i input.m4a --two-pass
 ```
+
+**Apply True-Peak limiting and save to a destination:**
+```bash
+fptunes norm -i input.m4a --true-peak --dest ./normalized/
+```
+
+**Options for `norm`:**
+- `-i, --input <path>`: The audio file to process.
+- `--two-pass`: Use the studio-grade two-pass EBU R128 algorithm.
+- `--true-peak`: Use a pure True-Peak limiter (-0.1 dB limit) to preserve loudness.
+- `--lufs <val>`: Override the integrated loudness target (e.g., -14.0).
+- `--dest <path>`: Save the normalized file to this path. If not provided, it processes **in-place**.
 
 ### 🛠️ General Help
 
@@ -113,7 +125,7 @@ View all available commands and options:
 fptunes --help
 ```
 
------
+---
 
 ## ⚙️ Configuration
 
@@ -137,7 +149,7 @@ fptunes config --regenerate
 - `WavPath` / `Mp3Path`: Destinations for other formats.
 - `BackupM4APath`: Where original `.m4a` files are moved after conversion.
 
------
+---
 
 ## 🛠️ Architecture
 
@@ -148,19 +160,19 @@ fptunes config --regenerate
   * **`fpjson`**: Natively parses complex JSON analysis data generated during two-pass normalization.
   * **`fptunes.cfg`**: A custom compiler configuration file that enforces strict `-O3` and `-XX` (Smart Linking) optimizations, stripping debug symbols (`-Xs`) to generate the smallest, fastest binary possible.
 
------
+---
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome\!
+Contributions, issues, and feature requests are welcome!
 Feel free to check out the [issues page](https://www.google.com/search?q=../../issues). If you want to add new audio filters or management subcommands, please ensure your code follows the existing unit structure.
 
 ## 📄 License
 
 This project is licensed under the BSD-3-Clause License - see the [LICENSE](LICENSE) file for details.
 
------
+---
 
-<p align="center"\>
-<i\>Built with ❤️ and Free Pascal.</i\>
-</p\>
+<p align="center">
+<i>Built with ❤️ and Free Pascal.</i>
+</p>
