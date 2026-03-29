@@ -215,7 +215,13 @@ begin
     if not FileExists(InputFile) then begin WriteLn('File not found.'); Exit; end;
 
     AssignFile(F, InputFile); Reset(F); FileContent := '';
-    while not Eof(F) do begin ReadLn(F, Line); FileContent := FileContent + Line; end;
+    while not Eof(F) do
+    begin
+      ReadLn(F, Line);
+      Line := Trim(Line);
+      if (Line <> '') and (Line[1] <> '#') then
+        FileContent := FileContent + Line;
+    end;
     CloseFile(F);
 
     UrlList.Delimiter := ';';
