@@ -4,7 +4,7 @@ program fptunes;
 
 uses
   Classes, SysUtils, CustApp, uAudioNormalizer,
-  fpjson, jsonparser, opensslsockets, uMusicProviderAPI, uMusicProviderUtils;
+  fpjson, jsonparser, opensslsockets, uMusicProviderAPI, uMusicProviderUtils, uConfig;
 
 type
   { TFPTunesApp }
@@ -15,9 +15,42 @@ type
     procedure WriteHelp;
     procedure HandleNormCommand;
     procedure HandleMusicProviderCommand;
+    procedure HandleConfigCommand;
+  public
+    constructor Create(TheOwner: TComponent); override;
+    destructor Destroy; override;
   end;
 
 { TFPTunesApp }
+
+constructor TFPTunesApp.Create(TheOwner: TComponent);
+begin
+  inherited Create(TheOwner);
+  // Load configuration 
+  AppConfig := TAppConfig.Create(ExtractFilePath(ParamStr(0)) + 'fptunes.ini');
+end;
+
+destructor TFPTunesApp.Destroy;
+begin
+  if Assigned(AppConfig) then
+    FreeAndNil(AppConfig);
+  inherited Destroy;
+end;
+
+// ============================================================================
+// COMMAND: config (Configuration Management)
+// ============================================================================
+procedure TFPTunesApp.HandleConfigCommand;
+begin
+  if HasOption('regenerate') then
+  begin
+    AppConfig.GenerateDefaults(ExtractFilePath(ParamStr(0)) + 'fptunes.ini');
+    Exit;
+  end;
+  
+  WriteLn('Current Configuration Path: ', ExtractFilePath(ParamStr(0)) + 'fptunes.ini');
+  WriteLn('Use "fptunes config --regenerate" to overwrite with default values.');
+end;
 
 // ============================================================================
 // COMMAND: xsync (Hidden Music Provider Access)
@@ -130,11 +163,17 @@ begin
   Writeln('');
   Writeln('Commands:');
   Writeln('  norm         Normalize audio loudness to EBU R128 (-14 LUFS)');
+  Writeln('  config       Manage application configuration');
   Writeln('  convert      (Coming soon) Convert between audio formats');
   Writeln('');
   Writeln('Options for "norm":');
   Writeln('  -i, --input  <path>   The audio file to process');
   Writeln('  --two-pass            Use the studio-grade two-pass algorithm');
+  Writeln('');
+  Writeln('Options for "config":');
+  Writeln('  --regenerate          Create or overwrite fptunes.ini with default values');
+  Writeln('');
+  Writeln('Global Options:');
   Writeln('  -h, --help            Show this help menu');
   Writeln('');
   Writeln('Example:');
@@ -150,7 +189,7 @@ var
   Command: String;
 begin
   // Quick check parameters
-  ErrorMsg := CheckOptions('hi:', 'help input: two-pass auth');
+  ErrorMsg := CheckOptions('hi:', 'help input: two-pass auth regenerate');
   if ErrorMsg <> '' then begin
     ShowException(Exception.Create(ErrorMsg));
     Terminate;
@@ -172,6 +211,8 @@ begin
     HandleNormCommand
   else if Command = 'xsync' then
     HandleMusicProviderCommand
+  else if Command = 'config' then
+    HandleConfigCommand
   else
   begin
     Writeln('Error: Unknown command "', Command, '"');

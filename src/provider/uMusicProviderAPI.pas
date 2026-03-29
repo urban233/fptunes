@@ -13,7 +13,7 @@ uses SysUtils, Classes, fpjson, jsonparser, jsonscanner, fphttpclient, base64, u
 type
   TMusicProviderAPI = class(TMusicProviderAuth)
   private
-    procedure DownloadTrack(const TrackId, TrackTitle: string);
+    procedure DownloadTrack(const TrackId, TrackTitle, TargetFolder: string);
   public
     { Fetches metadata for a specific media item. Returns TJSONObject (must be freed by caller). }
     function FetchMediaMetadata(const MediaType: string; const URLOrId: string): TJSONObject;
@@ -43,9 +43,9 @@ begin
   end;
 end;
 
-procedure TMusicProviderAPI.DownloadTrack(const TrackId, TrackTitle: string);
+procedure TMusicProviderAPI.DownloadTrack(const TrackId, TrackTitle, TargetFolder: string);
 var
-  Response, ManifestB64, ManifestJsonStr, StreamUrl, FileExt, SafeTitle: string;
+  Response, ManifestB64, ManifestJsonStr, StreamUrl, FileExt, SafeTitle, OutputPath: string;
   PlaybackInfo, ManifestData: TJSONObject;
   Parser: TJSONParser;
   UrlsArray: TJSONArray;
@@ -96,15 +96,23 @@ begin
       finally ManifestData.Free; end;
     finally Parser.Free; end;
 
+    if TargetFolder <> '' then
+    begin
+      if not DirectoryExists(TargetFolder) then CreateDir(TargetFolder);
+      OutputPath := TargetFolder + DirectorySeparator + SafeTitle + FileExt;
+    end
+    else
+      OutputPath := SafeTitle + FileExt;
+
     WriteLn('  [+] Downloading stream...');
-    FS := TFileStream.Create(SafeTitle + FileExt, fmCreate);
+    FS := TFileStream.Create(OutputPath, fmCreate);
     try
       DownloadClient := TFPHTTPClient.Create(nil);
       try
         DownloadClient.Get(StreamUrl, FS);
       finally DownloadClient.Free; end;
     finally FS.Free; end;
-    WriteLn('  [+] Saved as ', SafeTitle, FileExt);
+    WriteLn('  [+] Saved as ', OutputPath);
   except
     on E: Exception do WriteLn('  [!] Error downloading track: ', E.Message);
   end;
@@ -112,13 +120,14 @@ end;
 
 procedure TMusicProviderAPI.DownloadMedia(const MediaType: string; const URLOrId: string);
 var
-  Id, Response, TrackId, TrackTitle: string;
-  Metadata, TrackObj: TJSONObject;
+  Id, Response, TrackId, TrackTitle, ArtistName, AlbumTitle, TargetFolder: string;
+  Metadata, TrackObj, ArtistObj: TJSONObject;
   ItemsArray: TJSONArray;
   Parser: TJSONParser;
   i: Integer;
 begin
   Id := ExtractIdFromUrl(URLOrId);
+  TargetFolder := '';
   
   if MediaType = 'track' then
   begin
@@ -126,12 +135,34 @@ begin
     if Assigned(Metadata) then
     begin
       try
-        DownloadTrack(Id, Metadata.Strings['title']);
+        DownloadTrack(Id, Metadata.Strings['title'], '');
       finally Metadata.Free; end;
     end;
   end
   else if MediaType = 'album' then
   begin
+    WriteLn('Fetching album metadata...');
+    Metadata := FetchMediaMetadata(MediaType, Id);
+    if Assigned(Metadata) then
+    begin
+      try
+        AlbumTitle := Metadata.Strings['title'];
+        ArtistObj := Metadata.Objects['artist'];
+        if Assigned(ArtistObj) then
+          ArtistName := ArtistObj.Strings['name']
+        else
+          ArtistName := 'Unknown Artist';
+          
+        TargetFolder := ArtistName + ' - ' + AlbumTitle;
+        // Sanitize folder name
+        for i := 1 to Length(TargetFolder) do
+          if TargetFolder[i] in ['\', '/', ':', '*', '?', '"', '<', '>', '|'] then
+            TargetFolder[i] := '_';
+            
+        WriteLn('Target directory: ', TargetFolder);
+      finally Metadata.Free; end;
+    end;
+
     WriteLn('Fetching album tracks...');
     try
       Response := FHttpClient.Get(Format('%salbums/%s/tracks?countryCode=%s&limit=1000', [URL_API_BASE, Id, COUNTRY_CODE]));
@@ -149,7 +180,7 @@ begin
               TrackId := IntToStr(TrackObj.Integers['id']);
               TrackTitle := TrackObj.Strings['title'];
               WriteLn(Format('Downloading track %d/%d...', [i+1, ItemsArray.Count]));
-              DownloadTrack(TrackId, TrackTitle);
+              DownloadTrack(TrackId, TrackTitle, TargetFolder);
             end;
           end;
         finally Metadata.Free; end;

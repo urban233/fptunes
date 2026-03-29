@@ -5,7 +5,7 @@ unit uAudioNormalizer;
 interface
 
 uses
-  Classes, SysUtils, Process, fpjson, jsonparser, strutils;
+  Classes, SysUtils, Process, fpjson, jsonparser, strutils, uConfig;
 
 // This is the only function exposed to the rest of the application
 function ConvertM4AToFlacTwoPass(const InputPath: string): Boolean;
@@ -23,18 +23,26 @@ var
   BytesRead: LongInt;
   OutputStr: string;
   JsonStart, JsonEnd: Integer;
+  FormatSettings: TFormatSettings;
 begin
   Result := False;
   CapturedJSON := '';
   Proc := TProcess.Create(nil);
   MemStream := TMemoryStream.Create;
+  
+  FormatSettings := DefaultFormatSettings;
+  FormatSettings.DecimalSeparator := '.';
+  
   try
-    Proc.Executable := 'ffmpeg';
+    Proc.Executable := AppConfig.FFMpegPath;
     Proc.Parameters.Add('-hide_banner');
     Proc.Parameters.Add('-i');
     Proc.Parameters.Add(FilePath);
     Proc.Parameters.Add('-af');
-    Proc.Parameters.Add('loudnorm=I=-14:LRA=11:TP=-1.0:print_format=json');
+    Proc.Parameters.Add(Format('loudnorm=I=%s:LRA=%s:TP=%s:print_format=json', 
+      [FloatToStr(AppConfig.TargetLUFS, FormatSettings), 
+       FloatToStr(AppConfig.TargetLRA, FormatSettings), 
+       FloatToStr(AppConfig.TargetTP, FormatSettings)]));
     Proc.Parameters.Add('-f');
     Proc.Parameters.Add('null');
     Proc.Parameters.Add('-');
@@ -82,14 +90,21 @@ function BuildFilterString(const JsonStr: string; out FilterStr: string): Boolea
 var
   JsonData: TJSONData;
   JObj: TJSONObject;
+  FormatSettings: TFormatSettings;
 begin
   Result := False;
+  FormatSettings := DefaultFormatSettings;
+  FormatSettings.DecimalSeparator := '.';
+  
   try
     JsonData := GetJSON(JsonStr);
     JObj := TJSONObject(JsonData);
     
-    FilterStr := Format('loudnorm=I=-14:LRA=11:TP=-1.0:measured_I=%s:measured_LRA=%s:measured_TP=%s:measured_thresh=%s:offset=%s',
-      [JObj.Strings['input_i'],
+    FilterStr := Format('loudnorm=I=%s:LRA=%s:TP=%s:measured_I=%s:measured_LRA=%s:measured_TP=%s:measured_thresh=%s:offset=%s',
+      [FloatToStr(AppConfig.TargetLUFS, FormatSettings),
+       FloatToStr(AppConfig.TargetLRA, FormatSettings),
+       FloatToStr(AppConfig.TargetTP, FormatSettings),
+       JObj.Strings['input_i'],
        JObj.Strings['input_lra'],
        JObj.Strings['input_tp'],
        JObj.Strings['input_thresh'],
@@ -111,7 +126,7 @@ begin
   Result := False;
   Proc := TProcess.Create(nil);
   try
-    Proc.Executable := 'ffmpeg';
+    Proc.Executable := AppConfig.FFMpegPath;
     Proc.Parameters.Add('-hide_banner');
     Proc.Parameters.Add('-y'); 
     Proc.Parameters.Add('-i');
@@ -119,13 +134,13 @@ begin
     Proc.Parameters.Add('-af');
     Proc.Parameters.Add(FilterStr);
     Proc.Parameters.Add('-c:a');
-    Proc.Parameters.Add('flac');
+    Proc.Parameters.Add(AppConfig.OutputCodec);
     Proc.Parameters.Add('-sample_fmt');
-    Proc.Parameters.Add('s24'); 
+    Proc.Parameters.Add(AppConfig.SampleFormat); 
     Proc.Parameters.Add('-ar');
-    Proc.Parameters.Add('44100');
+    Proc.Parameters.Add(IntToStr(AppConfig.SampleRate));
     Proc.Parameters.Add('-compression_level');
-    Proc.Parameters.Add('8');
+    Proc.Parameters.Add(IntToStr(AppConfig.CompressionLevel));
     Proc.Parameters.Add(OutputPath);
 
     Proc.Options := [poWaitOnExit];
@@ -142,10 +157,10 @@ end;
 // ============================================================================
 function ConvertM4AToFlacTwoPass(const InputPath: string): Boolean;
 var
-  JsonStr, FilterStr, FlacPath: string;
+  JsonStr, FilterStr, OutputPath: string;
 begin
   Result := False;
-  FlacPath := ChangeFileExt(InputPath, '.flac');
+  OutputPath := ChangeFileExt(InputPath, '.' + AppConfig.OutputCodec);
   Writeln('Starting Two-Pass Normalization for: ', ExtractFileName(InputPath));
 
   Writeln('  -> Pass 1: Analyzing audio dynamics...');
@@ -161,10 +176,10 @@ begin
     Exit;
   end;
 
-  Writeln('  -> Pass 2: Applying measured filters and exporting to 24-bit FLAC...');
-  if ApplyNormalization(InputPath, FlacPath, FilterStr) then
+  Writeln(Format('  -> Pass 2: Applying measured filters and exporting to %s...', [AppConfig.OutputCodec]));
+  if ApplyNormalization(InputPath, OutputPath, FilterStr) then
   begin
-    Writeln('  -> Success! File saved: ', FlacPath);
+    Writeln('  -> Success! File saved: ', OutputPath);
     Result := True;
   end
   else
