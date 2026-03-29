@@ -175,7 +175,7 @@ fptunes config --regenerate
 ## 🤝 Contributing
 
 Contributions, issues, and feature requests are welcome!
-Feel free to check out the [issues page](https://www.google.com/search?q=../../issues). If you want to add new audio filters or management subcommands, please ensure your code follows the existing unit structure.
+Feel free to check out the [issues page](https://github.com/urban233/fptunes/issues). If you want to add new audio filters or management subcommands, please ensure your code follows the existing unit structure.
 
 ## 📄 License
 
