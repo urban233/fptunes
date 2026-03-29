@@ -18,6 +18,9 @@
 
 **`fptunes`** is a native, zero-dependency command-line utility for managing, converting, and normalizing your audio library. Built on top of the robust Free Pascal Compiler (FPC) and utilizing `ffmpeg` under the hood, it delivers studio-grade audio processing without the bloat of heavy runtime environments.
 
+> [!IMPORTANT]
+> **FFmpeg is required.** To use any conversion or normalization features, you must have `ffmpeg` (and `ffprobe`) installed and available in your system's PATH.
+
 Whether you need to batch convert `.m4a` to 24-bit `.flac` or apply precise EBU R128 two-pass loudness normalization, `fptunes` handles it instantly.
 
 ## ✨ Features
@@ -31,10 +34,8 @@ Whether you need to batch convert `.m4a` to 24-bit `.flac` or apply precise EBU 
 
 ## 🚀 Installation
 
-*Note: `fptunes` requires `ffmpeg` to be installed and available on your system's PATH.*
-
 ### Option 1: Pre-compiled Binaries
-Download the latest standalone executable for your operating system from the [Releases](../../releases) page. Put it in your system's `PATH` and you're good to go.
+**Coming Soon!** Pre-built standalone binaries for Windows, macOS, and Linux are currently in development and will be available in the [Releases](../../releases) section shortly.
 
 ### Option 2: Build from Source
 Building `fptunes` is incredibly straightforward. The project uses a custom compiler configuration (`fptunes.cfg`) to ensure a pristine source tree, outputting all build artifacts safely to `bin/` and `obj/` folders.
@@ -70,27 +71,41 @@ sudo make install
 
 -----
 
+-----
+
 ## 📖 Usage
 
-`fptunes` uses a modern subcommand structure to route your tasks.
+`fptunes` is built around an automated **Library Management Pipeline** that can intelligently convert, back up, and route your files into a clean directory structure.
 
-### Loudness Normalization
+### 🚀 Automated Library Management (Recommended)
 
-Apply two-pass EBU R128 normalization to an audio file:
+The `manage` command scans your input directory and creates a multi-step "Action Plan" for every file. It supports recursive subfolder scanning and preserves your directory structure.
 
+**Primary Workflow (Convert, Backup & Route):**
 ```bash
-fptunes norm input.m4a --two-pass
+# Convert M4As to FLAC (preserving original loudness), back up originals, and route to library
+fptunes manage --convert --true-peak --move
 ```
 
-### Format Conversion
+**Options for `manage`:**
+- `--convert`: Convert `.m4a` files to FLAC using your INI settings.
+- `--true-peak`: **(Highly Recommended)** Bypasses LUFS normalization; uses a True-Peak limiter to preserve the original master's loudness while preventing digital clipping.
+- `--move`: Analyzes file quality (bit-depth) and routes files to specific folders (Hi-Res, CD-Quality, etc.).
+- `--lufs <val>`: Override the target loudness (default: -14.0).
+- `-i, --input <path>`: Temporarily override the input directory.
+- `--backup <path>`: Temporarily override the M4A backup directory.
 
-Convert a file to the most efficient FLAC format based on its original bit depth:
+*Note: All management tasks run in **Dry-Run mode** first, showing you the exact pipeline for every file before asking for confirmation.*
+
+### 🔊 Manual Loudness Normalization
+
+Apply two-pass EBU R128 normalization to a single audio file:
 
 ```bash
-fptunes convert input.m4a --format flac
+fptunes norm -i input.m4a --two-pass
 ```
 
-### General Help
+### 🛠️ General Help
 
 View all available commands and options:
 
@@ -102,26 +117,25 @@ fptunes --help
 
 ## ⚙️ Configuration
 
-`fptunes` uses an INI configuration file (`fptunes.ini`) located in the same directory as the executable. This file allows you to customize the underlying FFmpeg paths, target LUFS normalization parameters, and export codec settings without modifying the source code.
-
-You can generate a fresh default configuration file at any time by running:
+`fptunes` uses an INI configuration file (`fptunes.ini`) located in the same directory as the executable. Generate a fresh template with:
 
 ```bash
 fptunes config --regenerate
 ```
 
-**Default `fptunes.ini` example:**
-```ini
-[Conversion]
-FFMpegPath=ffmpeg
-TargetLUFS=-14.0
-TargetLRA=11.0
-TargetTP=-1.0
-OutputCodec=flac
-SampleFormat=s32
-SampleRate=44100
-CompressionLevel=8
-```
+### Key Configuration Sections
+
+**`[Conversion]`**
+- `TargetLUFS`: The integrated loudness target (e.g., -14.0).
+- `SampleFormat`: The bit-depth for FLAC (use `s32` for 24-bit).
+- `FFMpegPath`: Path to your ffmpeg binary.
+
+**`[Management]`**
+- `InputPath`: Where the tool looks for new music files.
+- `HiResPath`: Destination for 24-bit/32-bit FLAC/ALAC.
+- `CDQualityPath`: Destination for 16-bit FLAC/ALAC.
+- `WavPath` / `Mp3Path`: Destinations for other formats.
+- `BackupM4APath`: Where original `.m4a` files are moved after conversion.
 
 -----
 
