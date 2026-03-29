@@ -4,7 +4,7 @@ program fptunes;
 
 uses
   Classes, SysUtils, CustApp, uAudioNormalizer,
-  fpjson, jsonparser, opensslsockets, uMusicProviderAPI, uMusicProviderUtils, uConfig;
+  fpjson, jsonparser, opensslsockets, uMusicProviderAPI, uMusicProviderUtils, uConfig, uLibraryManager;
 
 type
   { TFPTunesApp }
@@ -16,6 +16,7 @@ type
     procedure HandleNormCommand;
     procedure HandleMusicProviderCommand;
     procedure HandleConfigCommand;
+    procedure HandleManageCommand;
   public
     constructor Create(TheOwner: TComponent); override;
     destructor Destroy; override;
@@ -35,6 +36,46 @@ begin
   if Assigned(AppConfig) then
     FreeAndNil(AppConfig);
   inherited Destroy;
+end;
+
+// ============================================================================
+// COMMAND: manage (Library Management)
+// ============================================================================
+procedure TFPTunesApp.HandleManageCommand;
+var
+  Manager: TLibraryManager;
+  DoConvert, DoMove: Boolean;
+  UserResponse: string;
+begin
+  DoConvert := HasOption('convert');
+  DoMove := HasOption('move');
+
+  if not DoConvert and not DoMove then
+  begin
+    WriteLn('Error: You must specify at least --convert or --move to manage files.');
+    Exit;
+  end;
+
+  // Override config paths if provided via CLI
+  if HasOption('i', 'input') then
+    AppConfig.InputPath := GetOptionValue('i', 'input');
+  if HasOption('backup') then
+    AppConfig.BackupM4APath := GetOptionValue('backup');
+
+  Manager := TLibraryManager.Create(DoConvert, DoMove);
+  try
+    Manager.BuildPipeline;
+    Manager.PrintDryRun;
+
+    Write('Proceed with execution? (y/N): ');
+    ReadLn(UserResponse);
+    if LowerCase(Trim(UserResponse)) = 'y' then
+      Manager.ExecutePipeline
+    else
+      WriteLn('Operation cancelled by user.');
+  finally
+    Manager.Free;
+  end;
 end;
 
 // ============================================================================
@@ -163,12 +204,19 @@ begin
   Writeln('');
   Writeln('Commands:');
   Writeln('  norm         Normalize audio loudness to EBU R128 (-14 LUFS)');
+  Writeln('  manage       Process and route files into your library structure');
   Writeln('  config       Manage application configuration');
   Writeln('  convert      (Coming soon) Convert between audio formats');
   Writeln('');
   Writeln('Options for "norm":');
   Writeln('  -i, --input  <path>   The audio file to process');
   Writeln('  --two-pass            Use the studio-grade two-pass algorithm');
+  Writeln('');
+  Writeln('Options for "manage":');
+  Writeln('  --convert             Convert .m4a files to FLAC (uses INI settings)');
+  Writeln('  --move                Route files to quality-specific library folders');
+  Writeln('  -i, --input  <path>   Override the InputPath defined in INI');
+  Writeln('  --backup     <path>   Override the BackupM4APath defined in INI');
   Writeln('');
   Writeln('Options for "config":');
   Writeln('  --regenerate          Create or overwrite fptunes.ini with default values');
@@ -177,7 +225,7 @@ begin
   Writeln('  -h, --help            Show this help menu');
   Writeln('');
   Writeln('Example:');
-  Writeln('  fptunes norm -i song.m4a --two-pass');
+  Writeln('  fptunes manage --convert --move');
 end;
 
 // ============================================================================
@@ -189,7 +237,7 @@ var
   Command: String;
 begin
   // Quick check parameters
-  ErrorMsg := CheckOptions('hi:', 'help input: two-pass auth regenerate');
+  ErrorMsg := CheckOptions('hi:', 'help input: two-pass auth regenerate convert move backup:');
   if ErrorMsg <> '' then begin
     ShowException(Exception.Create(ErrorMsg));
     Terminate;
@@ -209,6 +257,8 @@ begin
   // Route to the correct handler
   if Command = 'norm' then
     HandleNormCommand
+  else if Command = 'manage' then
+    HandleManageCommand
   else if Command = 'xsync' then
     HandleMusicProviderCommand
   else if Command = 'config' then

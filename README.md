@@ -118,7 +118,7 @@ TargetLUFS=-14.0
 TargetLRA=11.0
 TargetTP=-1.0
 OutputCodec=flac
-SampleFormat=s24
+SampleFormat=s32
 SampleRate=44100
 CompressionLevel=8
 ```
