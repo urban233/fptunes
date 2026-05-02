@@ -8,12 +8,13 @@ unit uMusicProviderAPI;
 
 interface
 
-uses SysUtils, Classes, fpjson, jsonparser, jsonscanner, fphttpclient, base64, uMusicProviderAuth, uMusicProviderConstants, uMusicProviderUtils, uConfig;
+uses SysUtils, Classes, fpjson, jsonparser, jsonscanner, fphttpclient, base64, uMusicProviderAuth, uMusicProviderConstants, uMusicProviderUtils, uConfig, Process;
 
 type
   TMusicProviderAPI = class(TMusicProviderAuth)
   private
-    procedure DownloadTrack(const TrackId, TrackTitle, TargetFolder: string);
+    procedure DownloadTrack(const TrackId, TrackTitle, ArtistName, AlbumTitle, TargetFolder: string);
+    procedure TagFile(const FilePath, Title, Artist, Album: string);
   public
     { Fetches metadata for a specific media item. Returns TJSONObject (must be freed by caller). }
     function FetchMediaMetadata(const MediaType: string; const URLOrId: string): TJSONObject;
@@ -43,7 +44,44 @@ begin
   end;
 end;
 
-procedure TMusicProviderAPI.DownloadTrack(const TrackId, TrackTitle, TargetFolder: string);
+procedure TMusicProviderAPI.TagFile(const FilePath, Title, Artist, Album: string);
+var
+  Proc: TProcess;
+  TempPath: string;
+begin
+  TempPath := FilePath + '.tmp_tag';
+  if not RenameFile(FilePath, TempPath) then Exit;
+
+  Proc := TProcess.Create(nil);
+  try
+    Proc.Executable := AppConfig.FFMpegPath;
+    Proc.Parameters.Add('-hide_banner');
+    Proc.Parameters.Add('-y');
+    Proc.Parameters.Add('-i');
+    Proc.Parameters.Add(TempPath);
+    Proc.Parameters.Add('-metadata');
+    Proc.Parameters.Add('title=' + Title);
+    Proc.Parameters.Add('-metadata');
+    Proc.Parameters.Add('artist=' + Artist);
+    Proc.Parameters.Add('-metadata');
+    Proc.Parameters.Add('album=' + Album);
+    Proc.Parameters.Add('-c');
+    Proc.Parameters.Add('copy');
+    Proc.Parameters.Add(FilePath);
+
+    Proc.Options := [poWaitOnExit];
+    Proc.Execute;
+    
+    if Proc.ExitStatus = 0 then
+      DeleteFile(TempPath)
+    else
+      RenameFile(TempPath, FilePath); // Rollback on error
+  finally
+    Proc.Free;
+  end;
+end;
+
+procedure TMusicProviderAPI.DownloadTrack(const TrackId, TrackTitle, ArtistName, AlbumTitle, TargetFolder: string);
 var
   Response, ManifestB64, ManifestJsonStr, StreamUrl, FileExt, SafeTitle, OutputPath: string;
   PlaybackInfo, ManifestData: TJSONObject;
@@ -114,6 +152,10 @@ begin
       finally DownloadClient.Free; end;
     finally FS.Free; end;
     WriteLn('  [+] Saved as ', OutputPath);
+
+    // Attach metadata
+    TagFile(OutputPath, TrackTitle, ArtistName, AlbumTitle);
+
   except
     on E: Exception do WriteLn('  [!] Error downloading track: ', E.Message);
   end;
@@ -129,6 +171,8 @@ var
 begin
   Id := ExtractIdFromUrl(URLOrId);
   TargetFolder := '';
+  ArtistName := 'Unknown Artist';
+  AlbumTitle := 'Unknown Album';
   
   if MediaType = 'track' then
   begin
@@ -136,7 +180,13 @@ begin
     if Assigned(Metadata) then
     begin
       try
-        DownloadTrack(Id, Metadata.Strings['title'], '');
+        TrackTitle := Metadata.Strings['title'];
+        ArtistObj := Metadata.Objects['artist'];
+        if Assigned(ArtistObj) then ArtistName := ArtistObj.Strings['name'];
+        if Metadata.Find('album') <> nil then
+          AlbumTitle := Metadata.Objects['album'].Strings['title'];
+
+        DownloadTrack(Id, TrackTitle, ArtistName, AlbumTitle, '');
       finally Metadata.Free; end;
     end;
   end
@@ -180,8 +230,13 @@ begin
               TrackObj := ItemsArray.Objects[i];
               TrackId := IntToStr(TrackObj.Integers['id']);
               TrackTitle := TrackObj.Strings['title'];
+              
+              // If track has specific artist, use it, else use album artist
+              if TrackObj.Find('artist') <> nil then
+                ArtistName := TrackObj.Objects['artist'].Strings['name'];
+
               WriteLn(Format('Downloading track %d/%d...', [i+1, ItemsArray.Count]));
-              DownloadTrack(TrackId, TrackTitle, TargetFolder);
+              DownloadTrack(TrackId, TrackTitle, ArtistName, AlbumTitle, TargetFolder);
             end;
           end;
         finally Metadata.Free; end;
