@@ -32,6 +32,7 @@ Whether you need to batch convert `.m4a` to 24-bit `.flac` or apply precise EBU 
 
 ## ✨ Features
 
+- **Robust File Sync:** One-way recursive synchronization between directories with wildcard-based exclusions and mandatory dry-run safety.
 - **Studio-Grade Normalization:** True two-pass EBU R128 loudness normalization (target: -14 LUFS) that preserves dynamic range without pumping or clipping.
 - **True-Peak Limiting:** Option to bypass LUFS normalization and use a pure True-Peak limiter to preserve the original master's loudness.
 - **Smart Conversion:** Automatically detects source bit-depth to prevent file bloat (e.g., mapping 32-bit floats to 24-bit FLACs).
@@ -45,8 +46,11 @@ Whether you need to batch convert `.m4a` to 24-bit `.flac` or apply precise EBU 
 ### Option 1: Pre-compiled Binaries
 Standalone binaries for Windows, macOS, and Linux are now available in the [Releases](../../releases) section.
 
-> [!NOTE]
-> While binaries are provided for all three major platforms, **only the Windows binaries have been fully tested.** macOS and Linux builds are provided as-is; please report any issues you encounter.
+> [!CAUTION]
+> **Version Compatibility:** If the **minor version** (the middle number, e.g., 0.**6**.0) increments, you **must** regenerate your configuration file to include new settings.
+> ```bash
+> fptunes config --regenerate
+> ```
 
 ### Option 2: Build from Source
 Building `fptunes` is incredibly straightforward. The project uses a custom compiler configuration (`fptunes.cfg`) to ensure a pristine source tree, outputting all build artifacts safely to `bin/` and `obj/` folders.
@@ -84,9 +88,24 @@ sudo make install
 
 ## 📖 Usage
 
-`fptunes` is built around an automated **Library Management Pipeline** that can intelligently convert, back up, and route your files into a clean directory structure.
+`fptunes` is built around automated pipelines that intelligently manage your audio library.
 
-### 🚀 Automated Library Management (Recommended)
+### 🔄 One-Way File Synchronization
+
+The `filesync` command performs a one-way recursive sync from a source to a destination. It handles file updates, new additions, and purges files from the destination that no longer exist in the source (mirroring).
+
+**Sync folders using CLI overrides:**
+```bash
+fptunes filesync --src="C:\Music\Incoming" --dest="D:\Music\Library"
+```
+
+**Options for `filesync`:**
+- `--src <path>`: Override the source directory defined in INI.
+- `--dest <path>`: Override the destination directory defined in INI.
+
+*Note: Just like `manage`, this command runs in **Dry-Run mode** first, showing you all `[+] NEW`, `[*] UPDATE`, and `[-] DELETE` actions before proceeding.*
+
+### 🚀 Automated Library Management
 
 The `manage` command scans your input directory and creates a multi-step "Action Plan" for every file. It supports recursive subfolder scanning and preserves your directory structure.
 
@@ -158,6 +177,20 @@ fptunes config --regenerate
 - `CDQualityPath`: Destination for 16-bit FLAC/ALAC.
 - `WavPath` / `Mp3Path`: Destinations for other formats.
 - `BackupM4APath`: Where original `.m4a` files are moved after conversion.
+
+**`[Sync]`**
+- `SourcePath`: Default source for the `filesync` command.
+- `DestPath`: Default destination for the `filesync` command.
+
+---
+
+## 📌 Versioning
+
+This project follows [Semantic Versioning](https://semver.org/) (**Major.Minor.Patch**):
+
+1.  **MAJOR** version: Incremented for incompatible API or structural changes.
+2.  **MINOR** version: Incremented for new functionality (like adding `filesync`). **Requires INI regeneration.**
+3.  **PATCH** version: Incremented for backwards-compatible bug fixes.
 
 ---
 

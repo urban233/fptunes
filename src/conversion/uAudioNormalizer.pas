@@ -35,6 +35,8 @@ begin
     // aresample=resampler=soxr (high quality resampling to prevent inter-sample peaks)
     // alimiter=limit=0.9885 (-0.1 dB True Peak limit)
     Proc.Parameters.Add('aresample=resampler=soxr,alimiter=limit=0.9885');
+    Proc.Parameters.Add('-map_metadata');
+    Proc.Parameters.Add('0');
     Proc.Parameters.Add('-c:a');
     Proc.Parameters.Add(AppConfig.OutputCodec);
     Proc.Parameters.Add('-sample_fmt');
@@ -181,6 +183,8 @@ begin
     Proc.Parameters.Add(InputPath);
     Proc.Parameters.Add('-af');
     Proc.Parameters.Add(FilterStr);
+    Proc.Parameters.Add('-map_metadata');
+    Proc.Parameters.Add('0');
     Proc.Parameters.Add('-c:a');
     Proc.Parameters.Add(AppConfig.OutputCodec);
     Proc.Parameters.Add('-sample_fmt');

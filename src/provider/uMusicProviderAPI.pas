@@ -8,12 +8,28 @@ unit uMusicProviderAPI;
 
 interface
 
-uses SysUtils, Classes, fpjson, jsonparser, jsonscanner, fphttpclient, base64, uMusicProviderAuth, uMusicProviderConstants, uMusicProviderUtils;
+uses SysUtils, Classes, fpjson, jsonparser, jsonscanner, fphttpclient, base64, uMusicProviderAuth, uMusicProviderConstants, uMusicProviderUtils, uConfig, Process;
 
 type
+  TMetaData = record
+    Title: string;
+    Artist: string;
+    Album: string;
+    TrackNumber: Integer;
+    DiscNumber: Integer;
+    ReleaseDate: string;
+    ISRC: string;
+    UPC: string;
+    Copyright: string;
+    Comment: string;
+    CoverUUID: string;
+  end;
+
   TMusicProviderAPI = class(TMusicProviderAuth)
   private
-    procedure DownloadTrack(const TrackId, TrackTitle, TargetFolder: string);
+    procedure DownloadTrack(const TrackId: string; const Meta: TMetaData; const TargetFolder: string);
+    procedure TagFile(const FilePath: string; const Meta: TMetaData);
+    function GetCoverUrl(const UUID: string): string;
   public
     { Fetches metadata for a specific media item. Returns TJSONObject (must be freed by caller). }
     function FetchMediaMetadata(const MediaType: string; const URLOrId: string): TJSONObject;
@@ -43,7 +59,118 @@ begin
   end;
 end;
 
-procedure TMusicProviderAPI.DownloadTrack(const TrackId, TrackTitle, TargetFolder: string);
+function TMusicProviderAPI.GetCoverUrl(const UUID: string): string;
+begin
+  if UUID = '' then Exit('');
+  Result := 'https://resources.tidal.com/images/' + StringReplace(UUID, '-', '/', [rfReplaceAll]) + '/1280x1280.jpg';
+end;
+
+procedure TMusicProviderAPI.TagFile(const FilePath: string; const Meta: TMetaData);
+var
+  Proc: TProcess;
+  TempPath, CoverPath: string;
+  FS: TFileStream;
+  DownloadClient: TFPHTTPClient;
+begin
+  CoverPath := '';
+  if Meta.CoverUUID <> '' then
+  begin
+    CoverPath := FilePath + '.jpg';
+    try
+      DownloadClient := TFPHTTPClient.Create(nil);
+      FS := TFileStream.Create(CoverPath, fmCreate);
+      try
+        DownloadClient.Get(GetCoverUrl(Meta.CoverUUID), FS);
+      finally
+        FS.Free;
+        DownloadClient.Free;
+      end;
+    except
+      CoverPath := ''; // Ignore cover if download fails
+    end;
+  end;
+
+  TempPath := FilePath + '.tmp_tag';
+  if not RenameFile(FilePath, TempPath) then Exit;
+
+  Proc := TProcess.Create(nil);
+  try
+    Proc.Executable := AppConfig.FFMpegPath;
+    Proc.Parameters.Add('-hide_banner');
+    Proc.Parameters.Add('-y');
+    Proc.Parameters.Add('-i');
+    Proc.Parameters.Add(TempPath);
+    
+    if CoverPath <> '' then
+    begin
+      Proc.Parameters.Add('-i');
+      Proc.Parameters.Add(CoverPath);
+    end;
+
+    Proc.Parameters.Add('-metadata');
+    Proc.Parameters.Add('title=' + Meta.Title);
+    Proc.Parameters.Add('-metadata');
+    Proc.Parameters.Add('artist=' + Meta.Artist);
+    Proc.Parameters.Add('-metadata');
+    Proc.Parameters.Add('album=' + Meta.Album);
+    Proc.Parameters.Add('-metadata');
+    Proc.Parameters.Add('track=' + IntToStr(Meta.TrackNumber));
+    Proc.Parameters.Add('-metadata');
+    Proc.Parameters.Add('disc=' + IntToStr(Meta.DiscNumber));
+    if Meta.ReleaseDate <> '' then
+    begin
+      Proc.Parameters.Add('-metadata');
+      Proc.Parameters.Add('date=' + Meta.ReleaseDate);
+    end;
+    if Meta.ISRC <> '' then
+    begin
+      Proc.Parameters.Add('-metadata');
+      Proc.Parameters.Add('isrc=' + Meta.ISRC);
+    end;
+    if Meta.UPC <> '' then
+    begin
+      Proc.Parameters.Add('-metadata');
+      Proc.Parameters.Add('upc=' + Meta.UPC);
+    end;
+    if Meta.Copyright <> '' then
+    begin
+      Proc.Parameters.Add('-metadata');
+      Proc.Parameters.Add('copyright=' + Meta.Copyright);
+    end;
+    if Meta.Comment <> '' then
+    begin
+      Proc.Parameters.Add('-metadata');
+      Proc.Parameters.Add('comment=' + Meta.Comment);
+    end;
+
+    if CoverPath <> '' then
+    begin
+      Proc.Parameters.Add('-map');
+      Proc.Parameters.Add('0:0');
+      Proc.Parameters.Add('-map');
+      Proc.Parameters.Add('1:0');
+      Proc.Parameters.Add('-disposition:v');
+      Proc.Parameters.Add('attached_pic');
+    end;
+
+    Proc.Parameters.Add('-c');
+    Proc.Parameters.Add('copy');
+    Proc.Parameters.Add(FilePath);
+
+    Proc.Options := [poWaitOnExit];
+    Proc.Execute;
+    
+    if Proc.ExitStatus = 0 then
+      DeleteFile(TempPath)
+    else
+      RenameFile(TempPath, FilePath); // Rollback on error
+  finally
+    if (CoverPath <> '') and FileExists(CoverPath) then DeleteFile(CoverPath);
+    Proc.Free;
+  end;
+end;
+
+procedure TMusicProviderAPI.DownloadTrack(const TrackId: string; const Meta: TMetaData; const TargetFolder: string);
 var
   Response, ManifestB64, ManifestJsonStr, StreamUrl, FileExt, SafeTitle, OutputPath: string;
   PlaybackInfo, ManifestData: TJSONObject;
@@ -54,10 +181,10 @@ var
   i: Integer;
 begin
   RandomHumanSleep(1000, 2000);
-  WriteLn('  [+] Requesting stream manifest for track: ', TrackTitle);
+  WriteLn('  [+] Requesting stream manifest for track: ', Meta.Title);
   
   // Create a safe filename
-  SafeTitle := TrackTitle;
+  SafeTitle := Meta.Title;
   for i := 1 to Length(SafeTitle) do
     if SafeTitle[i] in ['\', '/', ':', '*', '?', '"', '<', '>', '|'] then
       SafeTitle[i] := '_';
@@ -98,11 +225,12 @@ begin
 
     if TargetFolder <> '' then
     begin
-      if not DirectoryExists(TargetFolder) then CreateDir(TargetFolder);
-      OutputPath := TargetFolder + DirectorySeparator + SafeTitle + FileExt;
+      OutputPath := IncludeTrailingPathDelimiter(AppConfig.InputPath) + TargetFolder;
+      if not DirectoryExists(OutputPath) then ForceDirectories(OutputPath);
+      OutputPath := OutputPath + DirectorySeparator + SafeTitle + FileExt;
     end
     else
-      OutputPath := SafeTitle + FileExt;
+      OutputPath := IncludeTrailingPathDelimiter(AppConfig.InputPath) + SafeTitle + FileExt;
 
     WriteLn('  [+] Downloading stream...');
     FS := TFileStream.Create(OutputPath, fmCreate);
@@ -113,6 +241,10 @@ begin
       finally DownloadClient.Free; end;
     finally FS.Free; end;
     WriteLn('  [+] Saved as ', OutputPath);
+
+    // Attach metadata
+    TagFile(OutputPath, Meta);
+
   except
     on E: Exception do WriteLn('  [!] Error downloading track: ', E.Message);
   end;
@@ -120,11 +252,13 @@ end;
 
 procedure TMusicProviderAPI.DownloadMedia(const MediaType: string; const URLOrId: string);
 var
-  Id, Response, TrackId, TrackTitle, ArtistName, AlbumTitle, TargetFolder: string;
-  Metadata, TrackObj, ArtistObj: TJSONObject;
+  Id, Response, TrackId: string;
+  Metadata, TrackObj, ArtistObj, AlbumObj: TJSONObject;
   ItemsArray: TJSONArray;
   Parser: TJSONParser;
   i: Integer;
+  Meta: TMetaData;
+  TargetFolder: string;
 begin
   Id := ExtractIdFromUrl(URLOrId);
   TargetFolder := '';
@@ -135,7 +269,23 @@ begin
     if Assigned(Metadata) then
     begin
       try
-        DownloadTrack(Id, Metadata.Strings['title'], '');
+        FillChar(Meta, SizeOf(Meta), 0);
+        Meta.Title := Metadata.Strings['title'];
+        Meta.Artist := Metadata.Objects['artist'].Strings['name'];
+        if Metadata.Find('album') <> nil then
+        begin
+          AlbumObj := Metadata.Objects['album'];
+          Meta.Album := AlbumObj.Strings['title'];
+          if AlbumObj.Find('cover') <> nil then
+            Meta.CoverUUID := AlbumObj.Strings['cover'];
+        end;
+        Meta.TrackNumber := Metadata.Integers['trackNumber'];
+        Meta.DiscNumber := Metadata.Integers['volumeNumber'];
+        if Metadata.Find('isrc') <> nil then Meta.ISRC := Metadata.Strings['isrc'];
+        if Metadata.Find('copyright') <> nil then Meta.Copyright := Metadata.Strings['copyright'];
+        Meta.Comment := 'https://tidal.com/track/' + Id;
+
+        DownloadTrack(Id, Meta, '');
       finally Metadata.Free; end;
     end;
   end
@@ -146,14 +296,17 @@ begin
     if Assigned(Metadata) then
     begin
       try
-        AlbumTitle := Metadata.Strings['title'];
+        FillChar(Meta, SizeOf(Meta), 0);
+        Meta.Album := Metadata.Strings['title'];
         ArtistObj := Metadata.Objects['artist'];
-        if Assigned(ArtistObj) then
-          ArtistName := ArtistObj.Strings['name']
-        else
-          ArtistName := 'Unknown Artist';
+        Meta.Artist := ArtistObj.Strings['name'];
+        if Metadata.Find('cover') <> nil then Meta.CoverUUID := Metadata.Strings['cover'];
+        if Metadata.Find('releaseDate') <> nil then Meta.ReleaseDate := Metadata.Strings['releaseDate'];
+        if Metadata.Find('upc') <> nil then Meta.UPC := Metadata.Strings['upc'];
+        if Metadata.Find('copyright') <> nil then Meta.Copyright := Metadata.Strings['copyright'];
+        Meta.Comment := 'https://tidal.com/album/' + Id;
           
-        TargetFolder := ArtistName + ' - ' + AlbumTitle;
+        TargetFolder := Meta.Artist + ' - ' + Meta.Album;
         // Sanitize folder name
         for i := 1 to Length(TargetFolder) do
           if TargetFolder[i] in ['\', '/', ':', '*', '?', '"', '<', '>', '|'] then
@@ -178,9 +331,16 @@ begin
             begin
               TrackObj := ItemsArray.Objects[i];
               TrackId := IntToStr(TrackObj.Integers['id']);
-              TrackTitle := TrackObj.Strings['title'];
+              
+              Meta.Title := TrackObj.Strings['title'];
+              Meta.TrackNumber := TrackObj.Integers['trackNumber'];
+              Meta.DiscNumber := TrackObj.Integers['volumeNumber'];
+              if TrackObj.Find('isrc') <> nil then Meta.ISRC := TrackObj.Strings['isrc'];
+              if TrackObj.Find('artist') <> nil then
+                Meta.Artist := TrackObj.Objects['artist'].Strings['name'];
+
               WriteLn(Format('Downloading track %d/%d...', [i+1, ItemsArray.Count]));
-              DownloadTrack(TrackId, TrackTitle, TargetFolder);
+              DownloadTrack(TrackId, Meta, TargetFolder);
             end;
           end;
         finally Metadata.Free; end;

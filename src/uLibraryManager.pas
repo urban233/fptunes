@@ -124,9 +124,9 @@ end;
 procedure TLibraryManager.ScanDirectory(const DirPath, RelativePath: string);
 var
   SearchRec: TSearchRec;
-  Ext, FileName, FullPath, NewRelativePath: string;
+  Ext, FileName, FullPath, NewRelativePath, ArtistFolder, CleanedRelativePath: string;
   Pipeline: TFilePipeline;
-  BitDepth: Integer;
+  BitDepth, DashPos: Integer;
 begin
   if FindFirst(IncludeTrailingPathDelimiter(DirPath) + '*.*', faAnyFile, SearchRec) = 0 then
   begin
@@ -150,6 +150,21 @@ begin
           Pipeline.FinalDest := '';
           Pipeline.BackupDest := '';
 
+          // Determine Artist Folder and Cleaned Album Folder for routing
+          ArtistFolder := '';
+          CleanedRelativePath := RelativePath;
+          if RelativePath <> '' then
+          begin
+            // Split the first directory from RelativePath to find the "Artist - Album" folder
+            DashPos := Pos(' - ', RelativePath);
+            if DashPos > 0 then
+            begin
+              ArtistFolder := LowerCase(Trim(Copy(RelativePath, 1, DashPos - 1))) + PathDelim;
+              // Strip "Artist - " from the start of the RelativePath
+              CleanedRelativePath := Trim(Copy(RelativePath, DashPos + 3, Length(RelativePath)));
+            end;
+          end;
+
           if (Ext = '.m4a') and FDoConvert then
           begin
             if FUseTruePeak then
@@ -166,12 +181,12 @@ begin
               if (Pos('24', AppConfig.SampleFormat) > 0) or (Pos('32', AppConfig.SampleFormat) > 0) then
               begin
                 AddAction(Pipeline, faMoveHiRes);
-                Pipeline.FinalDest := IncludeTrailingPathDelimiter(AppConfig.HiResPath) + RelativePath + ChangeFileExt(FileName, '.' + AppConfig.OutputCodec);
+                Pipeline.FinalDest := IncludeTrailingPathDelimiter(AppConfig.HiResPath) + ArtistFolder + CleanedRelativePath + ChangeFileExt(FileName, '.' + AppConfig.OutputCodec);
               end
               else
               begin
                 AddAction(Pipeline, faMoveCDQuality);
-                Pipeline.FinalDest := IncludeTrailingPathDelimiter(AppConfig.CDQualityPath) + RelativePath + ChangeFileExt(FileName, '.' + AppConfig.OutputCodec);
+                Pipeline.FinalDest := IncludeTrailingPathDelimiter(AppConfig.CDQualityPath) + ArtistFolder + CleanedRelativePath + ChangeFileExt(FileName, '.' + AppConfig.OutputCodec);
               end;
             end;
             
@@ -186,23 +201,23 @@ begin
               if BitDepth >= 24 then
               begin
                 AddAction(Pipeline, faMoveHiRes);
-                Pipeline.FinalDest := IncludeTrailingPathDelimiter(AppConfig.HiResPath) + RelativePath + FileName;
+                Pipeline.FinalDest := IncludeTrailingPathDelimiter(AppConfig.HiResPath) + ArtistFolder + CleanedRelativePath + FileName;
               end
               else
               begin
                 AddAction(Pipeline, faMoveCDQuality);
-                Pipeline.FinalDest := IncludeTrailingPathDelimiter(AppConfig.CDQualityPath) + RelativePath + FileName;
+                Pipeline.FinalDest := IncludeTrailingPathDelimiter(AppConfig.CDQualityPath) + ArtistFolder + CleanedRelativePath + FileName;
               end;
             end
             else if Ext = '.wav' then
             begin
               AddAction(Pipeline, faMoveWav);
-              Pipeline.FinalDest := IncludeTrailingPathDelimiter(AppConfig.WavPath) + RelativePath + FileName;
+              Pipeline.FinalDest := IncludeTrailingPathDelimiter(AppConfig.WavPath) + ArtistFolder + CleanedRelativePath + FileName;
             end
             else if Ext = '.mp3' then
             begin
               AddAction(Pipeline, faMoveMp3);
-              Pipeline.FinalDest := IncludeTrailingPathDelimiter(AppConfig.Mp3Path) + RelativePath + FileName;
+              Pipeline.FinalDest := IncludeTrailingPathDelimiter(AppConfig.Mp3Path) + ArtistFolder + CleanedRelativePath + FileName;
             end;
 
             if Length(Pipeline.Actions) > 0 then

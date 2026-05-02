@@ -4,10 +4,10 @@ program fptunes;
 
 uses
   Classes, SysUtils, CustApp, uAudioNormalizer,
-  fpjson, jsonparser, opensslsockets, uMusicProviderAPI, uMusicProviderUtils, uConfig, uLibraryManager;
+  fpjson, jsonparser, opensslsockets, uMusicProviderAPI, uMusicProviderUtils, uConfig, uLibraryManager, uFileSync;
 
 const
-  APP_VERSION = '0.5.1';
+  APP_VERSION = '0.6.0';
 
 type
   { TFPTunesApp }
@@ -21,6 +21,8 @@ type
     procedure HandleMusicProviderCommand;
     procedure HandleConfigCommand;
     procedure HandleManageCommand;
+    procedure HandleFileSyncCommand;
+    function FindConfigPath: string;
   public
     constructor Create(TheOwner: TComponent); override;
     destructor Destroy; override;
@@ -36,15 +38,79 @@ end;
 constructor TFPTunesApp.Create(TheOwner: TComponent);
 begin
   inherited Create(TheOwner);
-  // Load configuration 
-  AppConfig := TAppConfig.Create(ExtractFilePath(ParamStr(0)) + 'fptunes.ini');
 end;
+
+function TFPTunesApp.FindConfigPath: string;
+var
+  CustomPath: string;
+begin
+  if HasOption('c', 'config') then
+  begin
+    CustomPath := GetOptionValue('c', 'config');
+    if not FileExists(CustomPath) then
+      WriteLn('Warning: Specified configuration file not found: ', CustomPath);
+    Result := CustomPath;
+    Exit;
+  end;
+
+  // 1. Check Current Working Directory
+  Result := 'fptunes.ini';
+  if FileExists(Result) then Exit;
+
+  // 2. Fallback to Executable Directory
+  Result := ExtractFilePath(ParamStr(0)) + 'fptunes.ini';
+end;
+
 
 destructor TFPTunesApp.Destroy;
 begin
   if Assigned(AppConfig) then
     FreeAndNil(AppConfig);
   inherited Destroy;
+end;
+
+// ============================================================================
+// COMMAND: filesync (One-Way Recursive Sync)
+// ============================================================================
+procedure TFPTunesApp.HandleFileSyncCommand;
+var
+  Manager: TFileSyncManager;
+  UserResponse, Src, Dest: string;
+begin
+  if HasOption('v', 'version') then
+  begin
+    WriteVersion;
+    Exit;
+  end;
+
+  Src := AppConfig.SyncSource;
+  Dest := AppConfig.SyncDest;
+
+  if HasOption('src') then
+    Src := GetOptionValue('src');
+  if HasOption('dest') then
+    Dest := GetOptionValue('dest');
+
+  if (Src = '') or (Dest = '') then
+  begin
+    WriteLn('Error: Source and Destination paths must be specified in INI or via flags.');
+    Exit;
+  end;
+
+  Manager := TFileSyncManager.Create(Src, Dest);
+  try
+    Manager.BuildPipeline;
+    Manager.PrintDryRun;
+
+    Write('Proceed with synchronization? (y/N): ');
+    ReadLn(UserResponse);
+    if LowerCase(Trim(UserResponse)) = 'y' then
+      Manager.ExecutePipeline
+    else
+      WriteLn('Operation cancelled by user.');
+  finally
+    Manager.Free;
+  end;
 end;
 
 // ============================================================================
@@ -115,11 +181,11 @@ begin
 
   if HasOption('regenerate') then
   begin
-    AppConfig.GenerateDefaults(ExtractFilePath(ParamStr(0)) + 'fptunes.ini');
+    AppConfig.GenerateDefaults(AppConfig.LoadedPath);
     Exit;
   end;
   
-  WriteLn('Current Configuration Path: ', ExtractFilePath(ParamStr(0)) + 'fptunes.ini');
+  WriteLn('Current Configuration Path: ', AppConfig.LoadedPath);
   WriteLn('Use "fptunes config --regenerate" to overwrite with default values.');
 end;
 
@@ -170,7 +236,13 @@ begin
     if not FileExists(InputFile) then begin WriteLn('File not found.'); Exit; end;
 
     AssignFile(F, InputFile); Reset(F); FileContent := '';
-    while not Eof(F) do begin ReadLn(F, Line); FileContent := FileContent + Line; end;
+    while not Eof(F) do
+    begin
+      ReadLn(F, Line);
+      Line := Trim(Line);
+      if (Line <> '') and (Line[1] <> '#') then
+        FileContent := FileContent + Line;
+    end;
     CloseFile(F);
 
     UrlList.Delimiter := ';';
@@ -300,9 +372,14 @@ begin
   Writeln('Usage: ', ExeName, ' [command] [options]');
   Writeln('');
   Writeln('Commands:');
+  Writeln('  filesync     One-way recursive sync between two folders');
   Writeln('  manage       Process and route files into your library structure');
   Writeln('  norm         Normalize audio loudness to EBU R128 (-14 LUFS)');
   Writeln('  config       Manage application configuration');
+  Writeln('');
+  Writeln('Options for "filesync":');
+  Writeln('  --src        <path>   Source directory (overrides INI)');
+  Writeln('  --dest       <path>   Destination directory (overrides INI)');
   Writeln('');
   Writeln('Options for "manage":');
   Writeln('  --convert             Convert .m4a files to FLAC (uses INI settings)');
@@ -325,6 +402,7 @@ begin
   Writeln('Global Options:');
   Writeln('  -v, --version         Show version information');
   Writeln('  -h, --help            Show this help menu');
+  Writeln('  -c, --config <path>   Use a specific .ini configuration file');
   Writeln('');
   Writeln('Example:');
   Writeln('  fptunes manage --convert --true-peak --move');
@@ -338,14 +416,19 @@ procedure TFPTunesApp.DoRun;
 var
   ErrorMsg: String;
   Command: String;
+  ConfigPath: string;
 begin
   // Quick check parameters
-  ErrorMsg := CheckOptions('hiv', 'help input: two-pass auth regenerate convert move backup: true-peak lufs: dest: version');
+  ErrorMsg := CheckOptions('hivc:', 'help input: two-pass auth regenerate convert move backup: true-peak lufs: dest: version src: config:');
   if ErrorMsg <> '' then begin
     ShowException(Exception.Create(ErrorMsg));
     Terminate;
     Exit;
   end;
+
+  // Load configuration 
+  ConfigPath := FindConfigPath;
+  AppConfig := TAppConfig.Create(ConfigPath);
 
   // Parse Version
   if HasOption('v', 'version') then begin
@@ -369,6 +452,8 @@ begin
     HandleNormCommand
   else if Command = 'manage' then
     HandleManageCommand
+  else if Command = 'filesync' then
+    HandleFileSyncCommand
   else if Command = 'xsync' then
     HandleMusicProviderCommand
   else if Command = 'config' then

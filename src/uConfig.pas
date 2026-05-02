@@ -12,6 +12,7 @@ type
   TAppConfig = class
   private
     FIniFile: TIniFile;
+    FLoadedPath: string;
     // Conversion Settings
     FFFMpegPath: string;
     FTargetLUFS: Double;
@@ -22,7 +23,7 @@ type
     FSampleRate: Integer;
     FCompressionLevel: Integer;
     
-    FPaths: array[0..5] of string;
+    FPaths: array[0..7] of string;
     function GetStrProp(Index: Integer): string;
     procedure SetStrProp(Index: Integer; const Value: string);
 
@@ -41,6 +42,7 @@ type
     property SampleFormat: string read FSampleFormat write FSampleFormat;
     property SampleRate: Integer read FSampleRate write FSampleRate;
     property CompressionLevel: Integer read FCompressionLevel write FCompressionLevel;
+    property LoadedPath: string read FLoadedPath;
 
     // Management Settings
     property InputPath: string index 0 read GetStrProp write SetStrProp;
@@ -49,6 +51,10 @@ type
     property WavPath: string index 3 read GetStrProp write SetStrProp;
     property Mp3Path: string index 4 read GetStrProp write SetStrProp;
     property BackupM4APath: string index 5 read GetStrProp write SetStrProp;
+    
+    // Sync Settings
+    property SyncSource: string index 6 read GetStrProp write SetStrProp;
+    property SyncDest: string index 7 read GetStrProp write SetStrProp;
   end;
 
 var
@@ -70,6 +76,7 @@ constructor TAppConfig.Create(const ConfigPath: string);
 var
   FormatSettings: TFormatSettings;
 begin
+  FLoadedPath := ConfigPath;
   FIniFile := TIniFile.Create(ConfigPath);
   
   // Ensure dots are used for floats in INI files regardless of system locale
@@ -94,6 +101,10 @@ begin
   FPaths[3] := FIniFile.ReadString('Management', 'WavPath', './library/wav');
   FPaths[4] := FIniFile.ReadString('Management', 'Mp3Path', './library/mp3');
   FPaths[5] := FIniFile.ReadString('Management', 'BackupM4APath', './backup/m4a');
+  
+  // Load Sync Settings
+  FPaths[6] := FIniFile.ReadString('Sync', 'SourcePath', './sync_src');
+  FPaths[7] := FIniFile.ReadString('Sync', 'DestPath', './sync_dest');
 end;
 
 procedure TAppConfig.GenerateDefaults(const ConfigPath: string);
@@ -118,6 +129,9 @@ begin
   FIniFile.WriteString('Management', 'WavPath', './library/wav');
   FIniFile.WriteString('Management', 'Mp3Path', './library/mp3');
   FIniFile.WriteString('Management', 'BackupM4APath', './backup/m4a');
+  
+  FIniFile.WriteString('Sync', 'SourcePath', './sync_src');
+  FIniFile.WriteString('Sync', 'DestPath', './sync_dest');
 
   FIniFile.UpdateFile;
   
