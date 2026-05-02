@@ -8,7 +8,7 @@ unit uMusicProviderAPI;
 
 interface
 
-uses SysUtils, Classes, fpjson, jsonparser, jsonscanner, fphttpclient, base64, uMusicProviderAuth, uMusicProviderConstants, uMusicProviderUtils;
+uses SysUtils, Classes, fpjson, jsonparser, jsonscanner, fphttpclient, base64, uMusicProviderAuth, uMusicProviderConstants, uMusicProviderUtils, uConfig;
 
 type
   TMusicProviderAPI = class(TMusicProviderAuth)
@@ -98,11 +98,12 @@ begin
 
     if TargetFolder <> '' then
     begin
-      if not DirectoryExists(TargetFolder) then CreateDir(TargetFolder);
-      OutputPath := TargetFolder + DirectorySeparator + SafeTitle + FileExt;
+      OutputPath := IncludeTrailingPathDelimiter(AppConfig.InputPath) + TargetFolder;
+      if not DirectoryExists(OutputPath) then ForceDirectories(OutputPath);
+      OutputPath := OutputPath + DirectorySeparator + SafeTitle + FileExt;
     end
     else
-      OutputPath := SafeTitle + FileExt;
+      OutputPath := IncludeTrailingPathDelimiter(AppConfig.InputPath) + SafeTitle + FileExt;
 
     WriteLn('  [+] Downloading stream...');
     FS := TFileStream.Create(OutputPath, fmCreate);

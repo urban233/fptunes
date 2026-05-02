@@ -22,6 +22,7 @@ type
     procedure HandleConfigCommand;
     procedure HandleManageCommand;
     procedure HandleFileSyncCommand;
+    function FindConfigPath: string;
   public
     constructor Create(TheOwner: TComponent); override;
     destructor Destroy; override;
@@ -37,9 +38,29 @@ end;
 constructor TFPTunesApp.Create(TheOwner: TComponent);
 begin
   inherited Create(TheOwner);
-  // Load configuration 
-  AppConfig := TAppConfig.Create(ExtractFilePath(ParamStr(0)) + 'fptunes.ini');
 end;
+
+function TFPTunesApp.FindConfigPath: string;
+var
+  CustomPath: string;
+begin
+  if HasOption('c', 'config') then
+  begin
+    CustomPath := GetOptionValue('c', 'config');
+    if not FileExists(CustomPath) then
+      WriteLn('Warning: Specified configuration file not found: ', CustomPath);
+    Result := CustomPath;
+    Exit;
+  end;
+
+  // 1. Check Current Working Directory
+  Result := 'fptunes.ini';
+  if FileExists(Result) then Exit;
+
+  // 2. Fallback to Executable Directory
+  Result := ExtractFilePath(ParamStr(0)) + 'fptunes.ini';
+end;
+
 
 destructor TFPTunesApp.Destroy;
 begin
@@ -160,11 +181,11 @@ begin
 
   if HasOption('regenerate') then
   begin
-    AppConfig.GenerateDefaults(ExtractFilePath(ParamStr(0)) + 'fptunes.ini');
+    AppConfig.GenerateDefaults(AppConfig.LoadedPath);
     Exit;
   end;
   
-  WriteLn('Current Configuration Path: ', ExtractFilePath(ParamStr(0)) + 'fptunes.ini');
+  WriteLn('Current Configuration Path: ', AppConfig.LoadedPath);
   WriteLn('Use "fptunes config --regenerate" to overwrite with default values.');
 end;
 
@@ -381,6 +402,7 @@ begin
   Writeln('Global Options:');
   Writeln('  -v, --version         Show version information');
   Writeln('  -h, --help            Show this help menu');
+  Writeln('  -c, --config <path>   Use a specific .ini configuration file');
   Writeln('');
   Writeln('Example:');
   Writeln('  fptunes manage --convert --true-peak --move');
@@ -394,14 +416,19 @@ procedure TFPTunesApp.DoRun;
 var
   ErrorMsg: String;
   Command: String;
+  ConfigPath: string;
 begin
   // Quick check parameters
-  ErrorMsg := CheckOptions('hiv', 'help input: two-pass auth regenerate convert move backup: true-peak lufs: dest: version src:');
+  ErrorMsg := CheckOptions('hivc:', 'help input: two-pass auth regenerate convert move backup: true-peak lufs: dest: version src: config:');
   if ErrorMsg <> '' then begin
     ShowException(Exception.Create(ErrorMsg));
     Terminate;
     Exit;
   end;
+
+  // Load configuration 
+  ConfigPath := FindConfigPath;
+  AppConfig := TAppConfig.Create(ConfigPath);
 
   // Parse Version
   if HasOption('v', 'version') then begin

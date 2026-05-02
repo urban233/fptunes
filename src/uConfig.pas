@@ -12,6 +12,7 @@ type
   TAppConfig = class
   private
     FIniFile: TIniFile;
+    FLoadedPath: string;
     // Conversion Settings
     FFFMpegPath: string;
     FTargetLUFS: Double;
@@ -41,6 +42,7 @@ type
     property SampleFormat: string read FSampleFormat write FSampleFormat;
     property SampleRate: Integer read FSampleRate write FSampleRate;
     property CompressionLevel: Integer read FCompressionLevel write FCompressionLevel;
+    property LoadedPath: string read FLoadedPath;
 
     // Management Settings
     property InputPath: string index 0 read GetStrProp write SetStrProp;
@@ -74,6 +76,7 @@ constructor TAppConfig.Create(const ConfigPath: string);
 var
   FormatSettings: TFormatSettings;
 begin
+  FLoadedPath := ConfigPath;
   FIniFile := TIniFile.Create(ConfigPath);
   
   // Ensure dots are used for floats in INI files regardless of system locale
